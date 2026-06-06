@@ -1,0 +1,55 @@
+name: nightly-playtest
+
+# Long bot playtest batches, performance + bundle-size reports. Scheduled.
+# Surfaces balance regressions and crashes that a single PR run would miss.
+# Consider moving to the self-hosted Windows RTX runner once it exists (Run stage).
+
+on:
+  schedule:
+    - cron: "0 7 * * *"   # 07:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      games: ${{ steps.find.outputs.games }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          games=$(find games -maxdepth 2 -name package.json -printf '%h\n' 2>/dev/null \
+            | sed 's#^games/##' | jq -R . | jq -cs .)
+          [ "$games" = "null" ] && games='[]'
+          echo "games=$games" >> "$GITHUB_OUTPUT"
+
+  playtest:
+    needs: discover
+    if: needs.discover.outputs.games != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        game: ${{ fromJSON(needs.discover.outputs.games) }}
+    defaults:
+      run:
+        working-directory: games/${{ matrix.game }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: games/${{ matrix.game }}/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - name: Large bot batch
+        run: pnpm playtest --bot random --runs 2000 | tee playtest-report.json
+      - name: Build + bundle size
+        run: pnpm build && du -sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: playtest-${{ matrix.game }}
+          path: games/${{ matrix.game }}/playtest-report.json

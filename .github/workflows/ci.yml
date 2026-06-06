@@ -1,0 +1,61 @@
+name: ci
+
+# Per-game CI. Discovers every game under games/ with a package.json and runs
+# the full check suite for each. No games => empty matrix => no-op (still green).
+# Activates once a GitHub remote exists and Actions is enabled (Walk stage).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      games: ${{ steps.find.outputs.games }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          games=$(find games -maxdepth 2 -name package.json -printf '%h\n' 2>/dev/null \
+            | sed 's#^games/##' | jq -R . | jq -cs .)
+          [ "$games" = "null" ] && games='[]'
+          echo "games=$games" >> "$GITHUB_OUTPUT"
+          echo "Discovered games: $games"
+
+  check:
+    needs: discover
+    if: needs.discover.outputs.games != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        game: ${{ fromJSON(needs.discover.outputs.games) }}
+    defaults:
+      run:
+        working-directory: games/${{ matrix.game }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: games/${{ matrix.game }}/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm validate:content
+      - run: pnpm test
+      - run: pnpm test:sim
+      - run: pnpm build
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

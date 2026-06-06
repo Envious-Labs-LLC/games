@@ -1,0 +1,49 @@
+name: release-itch
+
+# Build a game's web bundle and push it to itch.io via Butler on a release tag.
+# Tag format: <game>-v<semver>  (e.g. prototype-01-v0.1.0).
+# Requires repo secrets: BUTLER_API_KEY, and ITCH_TARGET (studio/game).
+
+on:
+  push:
+    tags: ["*-v*"]
+  workflow_dispatch:
+    inputs:
+      game:
+        description: game folder under games/
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Resolve game name
+        id: game
+        run: |
+          if [ -n "${{ github.event.inputs.game }}" ]; then
+            name="${{ github.event.inputs.game }}"
+          else
+            name="${GITHUB_REF_NAME%-v*}"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: games/${{ steps.game.outputs.name }}/pnpm-lock.yaml
+      - name: Build web
+        working-directory: games/${{ steps.game.outputs.name }}
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: Install Butler
+        run: |
+          curl -L -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip butler.zip && chmod +x butler && ./butler -V
+      - name: Push to itch
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCH_TARGET: ${{ secrets.ITCH_TARGET }}
+        run: ./butler push "games/${{ steps.game.outputs.name }}/dist" "$ITCH_TARGET:html5"
