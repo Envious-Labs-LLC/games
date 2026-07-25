@@ -11,7 +11,7 @@ export function bufferInput(buffered: Input, observed: Input): Input {
     jumpHeld: observed.jumpHeld,
     dashPressed: buffered.dashPressed || observed.dashPressed,
     formPressed: buffered.formPressed || observed.formPressed,
-    vaultPressed: buffered.vaultPressed || observed.vaultPressed,
+    powerPressed: buffered.powerPressed || observed.powerPressed,
     restart: buffered.restart || observed.restart,
   };
 }
@@ -21,7 +21,7 @@ export function consumeBufferedInput(buffered: Input): Input {
   buffered.jumpPressed = false;
   buffered.dashPressed = false;
   buffered.formPressed = false;
-  buffered.vaultPressed = false;
+  buffered.powerPressed = false;
   buffered.restart = false;
   return consumed;
 }

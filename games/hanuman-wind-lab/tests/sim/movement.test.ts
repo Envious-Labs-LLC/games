@@ -32,7 +32,7 @@ describe("Hanuman Wind Lab movement", () => {
             jumpHeld: tick % 95 < 28,
             dashPressed: tick % 127 === 40,
             formPressed: tick % 211 === 80,
-            vaultPressed: tick % 173 === 60,
+            powerPressed: tick % 173 === 60,
             restart: false,
           },
           FIXED_DT,
@@ -49,7 +49,7 @@ describe("Hanuman Wind Lab movement", () => {
       state.player.facing = -1;
       state = step(
         state,
-        { ...emptyInput(), vaultPressed: true },
+        { ...emptyInput(), powerPressed: true },
         FIXED_DT,
       );
       return runTicks(state, emptyInput(), 90);
@@ -57,6 +57,27 @@ describe("Hanuman Wind Lab movement", () => {
 
     const first = run();
     expect(first.player.anchorUseCount).toBe(1);
+    expect(run()).toEqual(first);
+  });
+
+  it("repeats exactly when the input stream completes an earth-slam", () => {
+    const run = (): GameState => {
+      let state = createGame(73);
+      state.player.form = "mountain";
+      state.player.x = 1060;
+      state.player.y = 350;
+      state.player.onGround = false;
+      state = step(
+        state,
+        { ...emptyInput(), powerPressed: true },
+        FIXED_DT,
+      );
+      return runTicks(state, emptyInput(), 30);
+    };
+
+    const first = run();
+    expect(first.player.earthSlamStartCount).toBe(1);
+    expect(first.player.earthSlamImpactCount).toBe(1);
     expect(run()).toEqual(first);
   });
 
@@ -268,11 +289,250 @@ describe("Hanuman Wind Lab movement", () => {
     );
   });
 
+  it("starts a committed Mountain earth-slam while airborne", () => {
+    let state = createGame(62);
+    state.player.form = "mountain";
+    state.player.y = 350;
+    state.player.vx = 240;
+    state.player.vy = -200;
+    state.player.onGround = false;
+    state = step(
+      state,
+      {
+        ...emptyInput(),
+        powerPressed: true,
+        dashPressed: true,
+        jumpPressed: true,
+      },
+      FIXED_DT,
+    );
+
+    expect(state.player.earthSlamming).toBe(true);
+    expect(state.player.earthSlamStartCount).toBe(1);
+    expect(state.player.earthSlamImpactCount).toBe(0);
+    expect(state.player.vx).toBe(0);
+    expect(state.player.vy).toBeGreaterThan(1000);
+    expect(state.player.dashCount).toBe(0);
+    expect(state.player.jumpBufferTimer).toBe(0);
+    expect(state.bursts.filter((burst) => burst.kind === "slam")).toHaveLength(1);
+  });
+
+  it("keeps the earth-slam committed until a single landing impact", () => {
+    let state = createGame(63);
+    state.player.form = "mountain";
+    state.player.x = 1060;
+    state.player.y = 350;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    state = step(
+      state,
+      {
+        ...emptyInput(),
+        moveX: -1,
+        formPressed: true,
+        powerPressed: true,
+        dashPressed: true,
+        jumpPressed: true,
+      },
+      FIXED_DT,
+    );
+
+    expect(state.player.form).toBe("mountain");
+    expect(state.player.facing).toBe(1);
+    expect(state.player.earthSlamming).toBe(true);
+    expect(state.player.earthSlamStartCount).toBe(1);
+    expect(state.player.dashCount).toBe(0);
+    expect(state.player.jumpBufferTimer).toBe(0);
+
+    state = runTicks(state, emptyInput(), 20);
+    expect(state.player.onGround).toBe(true);
+    expect(state.player.earthSlamming).toBe(false);
+    expect(state.player.earthSlamStartCount).toBe(1);
+    expect(state.player.earthSlamImpactCount).toBe(1);
+    expect(
+      state.bursts.filter((burst) => burst.kind === "shockwave"),
+    ).toHaveLength(1);
+
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.earthSlamStartCount).toBe(1);
+    expect(state.player.earthSlamImpactCount).toBe(1);
+  });
+
+  it("lets grounded Mountain power attempts fall through to jump or dash", () => {
+    let dashState = createGame(64);
+    dashState.player.form = "mountain";
+    dashState = step(
+      dashState,
+      { ...emptyInput(), powerPressed: true, dashPressed: true },
+      FIXED_DT,
+    );
+    expect(dashState.player.earthSlamStartCount).toBe(0);
+    expect(dashState.player.dashCount).toBe(1);
+
+    let jumpState = createGame(65);
+    jumpState.player.form = "mountain";
+    jumpState = step(
+      jumpState,
+      { ...emptyInput(), powerPressed: true, jumpPressed: true },
+      FIXED_DT,
+    );
+    expect(jumpState.player.earthSlamStartCount).toBe(0);
+    expect(jumpState.player.onGround).toBe(false);
+    expect(jumpState.player.vy).toBeLessThan(0);
+  });
+
+  it("cancels an active Mountain air dash into an earth-slam", () => {
+    let state = createGame(66);
+    state.player.form = "mountain";
+    state.player.y = 350;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), dashPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.dashTimer).toBeGreaterThan(0);
+
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.earthSlamming).toBe(true);
+    expect(state.player.dashTimer).toBe(0);
+    expect(state.player.vx).toBe(0);
+    expect(state.player.vy).toBeGreaterThan(1000);
+  });
+
+  it("clears an earth-slam on a fall without creating an impact", () => {
+    let state = createGame(67);
+    state.platforms = [];
+    state.seals = [];
+    state.player.form = "mountain";
+    state.player.x = 700;
+    state.player.y = state.worldHeight - 5;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+
+    expect(state.falls).toBe(1);
+    expect(state.player.earthSlamming).toBe(false);
+    expect(state.player.earthSlamStartCount).toBe(1);
+    expect(state.player.earthSlamImpactCount).toBe(0);
+    expect(
+      state.bursts.filter((burst) => burst.kind === "shockwave"),
+    ).toHaveLength(0);
+  });
+
+  it("resets an active earth-slam on restart", () => {
+    let state = createGame(71);
+    state.player.form = "mountain";
+    state.player.y = 350;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.earthSlamming).toBe(true);
+
+    state = step(state, { ...emptyInput(), restart: true }, FIXED_DT);
+    expect(state.seed).toBe(72);
+    expect(state.player.earthSlamming).toBe(false);
+    expect(state.player.earthSlamStartCount).toBe(0);
+    expect(state.player.earthSlamImpactCount).toBe(0);
+  });
+
+  it("lets a failed Wind power attempt fall through to an air dash", () => {
+    let state = createGame(72);
+    state.player.x = 3500;
+    state.player.y = 350;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true, dashPressed: true },
+      FIXED_DT,
+    );
+
+    expect(state.player.anchorUseCount).toBe(0);
+    expect(state.player.earthSlamStartCount).toBe(0);
+    expect(state.player.dashCount).toBe(1);
+    expect(state.player.dashTimer).toBeGreaterThan(0);
+  });
+
+  it("does not create a shockwave on an ordinary Mountain landing", () => {
+    let state = createGame(68);
+    state.started = true;
+    state.player.form = "mountain";
+    state.player.x = 900;
+    state.player.y = 480;
+    state.player.vy = 300;
+    state.player.onGround = false;
+    state = runTicks(state, emptyInput(), 6);
+
+    expect(state.player.onGround).toBe(true);
+    expect(state.player.earthSlamImpactCount).toBe(0);
+    expect(
+      state.bursts.filter((burst) => burst.kind === "shockwave"),
+    ).toHaveLength(0);
+  });
+
+  it("finishes only after an earth-slam lands at the shrine", () => {
+    let state = createGame(74);
+    for (const sigil of state.sigils) sigil.collected = true;
+    state.player.form = "mountain";
+    state.player.x = state.finish.x;
+    state.player.y = 350;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+
+    expect(state.status).toBe("playing");
+    expect(state.player.earthSlamming).toBe(true);
+    expect(state.player.earthSlamImpactCount).toBe(0);
+
+    state = runTicks(state, emptyInput(), 20);
+    expect(state.status).toBe("won");
+    expect(state.player.onGround).toBe(true);
+    expect(state.player.earthSlamming).toBe(false);
+    expect(state.player.earthSlamStartCount).toBe(1);
+    expect(state.player.earthSlamImpactCount).toBe(1);
+
+    const wonState = structuredClone(state);
+    state = step(
+      state,
+      {
+        ...emptyInput(),
+        formPressed: true,
+        powerPressed: true,
+        dashPressed: true,
+        jumpPressed: true,
+      },
+      FIXED_DT,
+    );
+    expect(state.player).toEqual(wonState.player);
+    expect(state.statusTimer).toBeGreaterThan(wonState.statusTimer);
+  });
+
   it("launches from a nearby wind anchor toward movement input", () => {
     let state = createGame(52);
     state = step(
       state,
-      { ...emptyInput(), moveX: 1, vaultPressed: true },
+      { ...emptyInput(), moveX: 1, powerPressed: true },
       FIXED_DT,
     );
     expect(state.player.anchorUseCount).toBe(1);
@@ -284,7 +544,7 @@ describe("Hanuman Wind Lab movement", () => {
     let leftState = createGame(53);
     leftState = step(
       leftState,
-      { ...emptyInput(), moveX: -1, vaultPressed: true },
+      { ...emptyInput(), moveX: -1, powerPressed: true },
       FIXED_DT,
     );
     expect(leftState.player.anchorUseCount).toBe(1);
@@ -296,7 +556,7 @@ describe("Hanuman Wind Lab movement", () => {
     let state = createGame(54);
     state = step(
       state,
-      { ...emptyInput(), moveX: 1, vaultPressed: true },
+      { ...emptyInput(), moveX: 1, powerPressed: true },
       FIXED_DT,
     );
     state = step(
@@ -314,7 +574,7 @@ describe("Hanuman Wind Lab movement", () => {
     mountainState.player.form = "mountain";
     mountainState = step(
       mountainState,
-      { ...emptyInput(), vaultPressed: true },
+      { ...emptyInput(), powerPressed: true },
       FIXED_DT,
     );
     expect(mountainState.player.anchorUseCount).toBe(0);
@@ -323,7 +583,7 @@ describe("Hanuman Wind Lab movement", () => {
     farState.player.x = 3500;
     farState = step(
       farState,
-      { ...emptyInput(), vaultPressed: true },
+      { ...emptyInput(), powerPressed: true },
       FIXED_DT,
     );
     expect(farState.player.anchorUseCount).toBe(0);
@@ -331,28 +591,40 @@ describe("Hanuman Wind Lab movement", () => {
     let cooldownState = createGame(57);
     cooldownState = step(
       cooldownState,
-      { ...emptyInput(), vaultPressed: true },
+      { ...emptyInput(), powerPressed: true },
       FIXED_DT,
     );
     cooldownState = step(
       cooldownState,
-      { ...emptyInput(), vaultPressed: true },
+      { ...emptyInput(), powerPressed: true },
       FIXED_DT,
     );
     expect(cooldownState.player.anchorUseCount).toBe(1);
   });
 
-  it("does not carry a Mountain vault press through a form change", () => {
-    let state = createGame(61);
-    state.player.form = "mountain";
-    state = step(
-      state,
-      { ...emptyInput(), formPressed: true, vaultPressed: true },
+  it("uses E plus Q for form change only in either direction", () => {
+    let mountainState = createGame(69);
+    mountainState.player.form = "mountain";
+    mountainState.player.y = 350;
+    mountainState.player.onGround = false;
+    mountainState = step(
+      mountainState,
+      { ...emptyInput(), formPressed: true, powerPressed: true },
       FIXED_DT,
     );
+    expect(mountainState.player.form).toBe("wind");
+    expect(mountainState.player.anchorUseCount).toBe(0);
+    expect(mountainState.player.earthSlamStartCount).toBe(0);
 
-    expect(state.player.form).toBe("wind");
-    expect(state.player.anchorUseCount).toBe(0);
+    let windState = createGame(70);
+    windState = step(
+      windState,
+      { ...emptyInput(), formPressed: true, powerPressed: true },
+      FIXED_DT,
+    );
+    expect(windState.player.form).toBe("mountain");
+    expect(windState.player.anchorUseCount).toBe(0);
+    expect(windState.player.earthSlamStartCount).toBe(0);
   });
 
   it("activates later anchors while airborne and becomes ready after cooldown", () => {
@@ -366,7 +638,7 @@ describe("Hanuman Wind Lab movement", () => {
     expect(findUsableWindAnchorIndex(state)).toBe(3);
     state = step(
       state,
-      { ...emptyInput(), moveX: -1, vaultPressed: true },
+      { ...emptyInput(), moveX: -1, powerPressed: true },
       FIXED_DT,
     );
     expect(state.player.usedWindAnchorIndices).toEqual([3]);
@@ -380,7 +652,7 @@ describe("Hanuman Wind Lab movement", () => {
 
     state = step(
       state,
-      { ...emptyInput(), moveX: 1, vaultPressed: true },
+      { ...emptyInput(), moveX: 1, powerPressed: true },
       FIXED_DT,
     );
     expect(state.player.anchorUseCount).toBe(2);
@@ -399,7 +671,7 @@ describe("Hanuman Wind Lab movement", () => {
       expect(findUsableWindAnchorIndex(state)).toBe(index);
       state = step(
         state,
-        { ...emptyInput(), moveX: 1, vaultPressed: true },
+        { ...emptyInput(), moveX: 1, powerPressed: true },
         FIXED_DT,
       );
     }

@@ -17,6 +17,10 @@ let totalFormShifts = 0;
 let runsUsingWindAnchors = 0;
 let totalAnchorUses = 0;
 let runsUsingAllWindAnchors = 0;
+let totalEarthSlamStarts = 0;
+let totalEarthSlamImpacts = 0;
+let runsStartingEarthSlam = 0;
+let runsLandingEarthSlam = 0;
 
 for (let index = 0; index < runs; index += 1) {
   try {
@@ -32,6 +36,10 @@ for (let index = 0; index < runs; index += 1) {
     if (result.uniqueAnchorsUsed === result.totalAnchors) {
       runsUsingAllWindAnchors += 1;
     }
+    totalEarthSlamStarts += result.earthSlamStarts;
+    totalEarthSlamImpacts += result.earthSlamImpacts;
+    if (result.earthSlamStarts > 0) runsStartingEarthSlam += 1;
+    if (result.earthSlamImpacts > 0) runsLandingEarthSlam += 1;
   } catch {
     crashes += 1;
   }
@@ -53,13 +61,21 @@ console.log(
     averageWindVaults:
       runs > 0 ? Number((totalAnchorUses / runs).toFixed(2)) : 0,
     runsUsingAllWindAnchors,
+    runsStartingEarthSlam,
+    runsLandingEarthSlam,
+    averageEarthSlams:
+      runs > 0 ? Number((totalEarthSlamImpacts / runs).toFixed(2)) : 0,
   }),
 );
 process.exit(
   crashes > 0 ||
     timeouts > 0 ||
     runsUsingWindAnchors !== runs ||
-    runsUsingAllWindAnchors !== runs
+    runsUsingAllWindAnchors !== runs ||
+    runsBreakingBothSeals !== runs ||
+    runsStartingEarthSlam !== runs ||
+    runsLandingEarthSlam !== runs ||
+    totalEarthSlamStarts !== totalEarthSlamImpacts
     ? 1
     : 0,
 );

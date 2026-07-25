@@ -29,6 +29,9 @@ export const movementSchema = z.object({
     gravity: positiveNumber,
     dashSpeed: positiveNumber,
     wallSlideSpeed: positiveNumber,
+    earthSlam: z.object({
+      speed: positiveNumber,
+    }),
   }),
   wallSlideSpeed: positiveNumber,
   wallJumpX: positiveNumber,

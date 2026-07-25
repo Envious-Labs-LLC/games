@@ -16,7 +16,9 @@ export type BurstKind =
   | "fall"
   | "transform"
   | "break"
-  | "anchor";
+  | "anchor"
+  | "slam"
+  | "shockwave";
 
 export interface Input {
   moveX: -1 | 0 | 1;
@@ -24,7 +26,7 @@ export interface Input {
   jumpHeld: boolean;
   dashPressed: boolean;
   formPressed: boolean;
-  vaultPressed: boolean;
+  powerPressed: boolean;
   restart: boolean;
 }
 
@@ -79,6 +81,9 @@ export interface Player {
   anchorCooldown: number;
   anchorUseCount: number;
   usedWindAnchorIndices: number[];
+  earthSlamming: boolean;
+  earthSlamStartCount: number;
+  earthSlamImpactCount: number;
 }
 
 export interface GameState {
@@ -110,7 +115,7 @@ export function emptyInput(): Input {
     jumpHeld: false,
     dashPressed: false,
     formPressed: false,
-    vaultPressed: false,
+    powerPressed: false,
     restart: false,
   };
 }
@@ -145,6 +150,9 @@ export function createGame(seed: number): GameState {
       anchorCooldown: 0,
       anchorUseCount: 0,
       usedWindAnchorIndices: [],
+      earthSlamming: false,
+      earthSlamStartCount: 0,
+      earthSlamImpactCount: 0,
     },
     platforms: course.platforms.map((platform) => ({ ...platform })),
     sigils: course.sigils.map((sigil) => ({ ...sigil, collected: false })),
@@ -175,7 +183,7 @@ export function step(state: GameState, input: Input, dt: number): GameState {
     input.jumpHeld ||
     input.dashPressed ||
     input.formPressed ||
-    input.vaultPressed;
+    input.powerPressed;
   if (!state.started && !isAction) return state;
   state.started = true;
   state.elapsed += dt;
@@ -185,6 +193,7 @@ export function step(state: GameState, input: Input, dt: number): GameState {
 
   if (
     state.sigils.every((sigil) => sigil.collected) &&
+    !state.player.earthSlamming &&
     state.player.x >= state.finish.x - 58
   ) {
     state.status = "won";
@@ -197,11 +206,14 @@ export function step(state: GameState, input: Input, dt: number): GameState {
 
 function updatePlayer(state: GameState, input: Input, dt: number): void {
   const player = state.player;
-  const vaultFormEligible = player.form === "wind";
-  if (input.moveX !== 0) player.facing = input.moveX;
+  const powerForm =
+    !input.formPressed && !player.earthSlamming ? player.form : null;
+  if (input.moveX !== 0 && !player.earthSlamming) {
+    player.facing = input.moveX;
+  }
   player.anchorCooldown = Math.max(0, player.anchorCooldown - dt);
 
-  if (input.formPressed) {
+  if (input.formPressed && !player.earthSlamming) {
     player.form = player.form === "wind" ? "mountain" : "wind";
     player.formShiftCount += 1;
     player.gliding = false;
@@ -214,11 +226,17 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
   if (player.onGround) player.coyoteTimer = movement.coyoteTime;
   else player.coyoteTimer = Math.max(0, player.coyoteTimer - dt);
 
-  const vaulted =
-    vaultFormEligible && input.vaultPressed && tryWindVault(state, input);
+  const powered =
+    input.powerPressed &&
+    (powerForm === "wind"
+      ? tryWindVault(state, input)
+      : powerForm === "mountain"
+        ? tryEarthSlam(state)
+        : false);
 
   if (
-    !vaulted &&
+    !powered &&
+    !player.earthSlamming &&
     input.dashPressed &&
     player.dashAvailable &&
     player.dashTimer === 0
@@ -234,7 +252,8 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
 
   const canGroundJump = player.onGround || player.coyoteTimer > 0;
   if (
-    !vaulted &&
+    !powered &&
+    !player.earthSlamming &&
     player.jumpBufferTimer > 0 &&
     (canGroundJump || player.wallSide !== 0)
   ) {
@@ -255,7 +274,14 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
     addBurst(state, "jump", player.x, player.y, player.facing);
   }
 
-  if (player.dashTimer > 0) {
+  if (player.earthSlamming) {
+    player.vx = 0;
+    player.vy = movement.mountainForm.earthSlam.speed;
+    player.gliding = false;
+    player.jumpBufferTimer = 0;
+    player.jumpHoldTimer = 0;
+    player.dashTimer = 0;
+  } else if (player.dashTimer > 0) {
     player.vx = player.facing * dashSpeedFor(player.form);
     player.vy = 0;
   } else {
@@ -311,6 +337,7 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
     player.dashAvailable = true;
     player.dashTimer = 0;
     player.anchorCooldown = 0;
+    player.earthSlamming = false;
   }
 }
 
@@ -406,13 +433,22 @@ function moveAndCollide(state: GameState, dt: number): void {
   }
 
   const wasOnGround = player.onGround;
+  const wasEarthSlamming = player.earthSlamming;
   if (landedY !== null) {
     player.y = landedY;
     player.vy = 0;
     player.onGround = true;
     player.gliding = false;
     player.dashAvailable = true;
-    if (!wasOnGround) addBurst(state, "land", player.x, player.y, player.facing);
+    if (!wasOnGround) {
+      if (wasEarthSlamming) {
+        player.earthSlamming = false;
+        player.earthSlamImpactCount += 1;
+        addBurst(state, "shockwave", player.x, player.y, player.facing);
+      } else {
+        addBurst(state, "land", player.x, player.y, player.facing);
+      }
+    }
   } else if (ceilingY !== null) {
     player.y = ceilingY + PLAYER_HEIGHT;
     player.vy = Math.max(0, player.vy);
@@ -478,6 +514,28 @@ function tryWindVault(state: GameState, input: Input): boolean {
   return true;
 }
 
+function tryEarthSlam(state: GameState): boolean {
+  const player = state.player;
+  if (
+    player.form !== "mountain" ||
+    player.onGround ||
+    player.earthSlamming
+  ) {
+    return false;
+  }
+
+  player.earthSlamming = true;
+  player.earthSlamStartCount += 1;
+  player.vx = 0;
+  player.vy = movement.mountainForm.earthSlam.speed;
+  player.gliding = false;
+  player.jumpBufferTimer = 0;
+  player.jumpHoldTimer = 0;
+  player.dashTimer = 0;
+  addBurst(state, "slam", player.x, player.y - PLAYER_HEIGHT * 0.5, player.facing);
+  return true;
+}
+
 export function findUsableWindAnchorIndex(state: GameState): number | null {
   const player = state.player;
   if (player.form !== "wind" || player.anchorCooldown > 0) return null;
@@ -537,7 +595,7 @@ function addBurst(
     x,
     y,
     facing,
-    ttl: kind === "sigil" ? 0.65 : 0.3,
+    ttl: kind === "sigil" || kind === "shockwave" ? 0.65 : 0.3,
   });
 }
 

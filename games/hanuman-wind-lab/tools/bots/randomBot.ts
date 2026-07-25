@@ -19,6 +19,8 @@ export interface BotResult {
   anchorUses: number;
   uniqueAnchorsUsed: number;
   totalAnchors: number;
+  earthSlamStarts: number;
+  earthSlamImpacts: number;
 }
 
 export function runOne(seed: number, maxTicks = 12_000): BotResult {
@@ -52,7 +54,11 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
         ? Number.POSITIVE_INFINITY
         : nextSeal.x - state.player.x;
     const approachingSeal = sealDistance > -40 && sealDistance < 150;
-    const wantsMountain = approachingSeal;
+    const wantsSafeSlam =
+      state.player.earthSlamImpactCount === 0 &&
+      state.player.x > 850 &&
+      state.player.x < 1050;
+    const wantsMountain = approachingSeal || wantsSafeSlam;
 
     input.formPressed =
       (wantsMountain && state.player.form === "wind") ||
@@ -60,12 +66,23 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
         state.player.form === "mountain" &&
         state.player.dashTimer === 0);
     const usableAnchorIndex = findUsableWindAnchorIndex(state);
-    input.vaultPressed =
+    const shouldStartEarthSlam =
+      wantsSafeSlam &&
+      state.player.form === "mountain" &&
+      !state.player.onGround &&
+      !state.player.earthSlamming &&
+      state.player.earthSlamStartCount === 0;
+    input.powerPressed =
       usableAnchorIndex !== null &&
       !state.player.usedWindAnchorIndices.includes(usableAnchorIndex);
+    input.powerPressed ||= shouldStartEarthSlam;
 
     input.jumpPressed =
-      state.player.onGround && (approachingGap || approachingSigil || ticks % 90 === 0);
+      state.player.onGround &&
+      (wantsSafeSlam ||
+        approachingGap ||
+        approachingSigil ||
+        ticks % 90 === 0);
     if (state.player.wallSide !== 0 && !state.player.onGround && ticks % 7 === 0) {
       input.jumpPressed = true;
       wallKickUntil = ticks + 9;
@@ -73,6 +90,7 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
     input.jumpHeld = !state.player.onGround && state.player.vy < 310;
     const shouldSmashSeal =
       approachingSeal &&
+      state.player.earthSlamImpactCount > 0 &&
       state.player.dashAvailable &&
       (state.player.form === "mountain" || input.formPressed);
     input.dashPressed =
@@ -96,5 +114,7 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
     anchorUses: state.player.anchorUseCount,
     uniqueAnchorsUsed: state.player.usedWindAnchorIndices.length,
     totalAnchors: state.windAnchors.length,
+    earthSlamStarts: state.player.earthSlamStartCount,
+    earthSlamImpacts: state.player.earthSlamImpactCount,
   };
 }

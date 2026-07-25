@@ -39,10 +39,33 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
     .poll(() => page.evaluate(() => window.__WIND_STATE__.player.dashTimer))
     .toBe(0);
 
+  await page.keyboard.press("r");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.seed))
+    .toBe(206);
   await page.keyboard.press("e");
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__.player.form))
     .toBe("mountain");
+  await page.keyboard.press("Space");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.onGround))
+    .toBe(false);
+  await page.keyboard.press("q");
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__WIND_STATE__.player.earthSlamStartCount),
+    )
+    .toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__WIND_STATE__.player.earthSlamImpactCount),
+    )
+    .toBe(1);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.onGround))
+    .toBe(true);
+
   await page.keyboard.press("e");
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__.player.form))
@@ -56,6 +79,6 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
   await page.keyboard.press("Shift");
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__.player.dashCount))
-    .toBe(2);
+    .toBe(1);
   expect(errors).toEqual([]);
 });

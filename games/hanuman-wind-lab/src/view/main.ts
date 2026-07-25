@@ -87,7 +87,7 @@ class WindScene extends Phaser.Scene {
       .text(
         WIDTH / 2,
         HEIGHT - 18,
-        "MOVE A/D   JUMP + GLIDE SPACE   DASH SHIFT   FORM E   WIND VAULT Q",
+        "MOVE A/D   JUMP / GLIDE SPACE   DASH SHIFT   FORM E   Q VAULT / SLAM",
         {
           fontFamily: "Arial, sans-serif",
           fontSize: "12px",
@@ -160,7 +160,7 @@ class WindScene extends Phaser.Scene {
     input.jumpHeld = this.keys.space!.isDown;
     input.dashPressed = Phaser.Input.Keyboard.JustDown(this.keys.shift!);
     input.formPressed = Phaser.Input.Keyboard.JustDown(this.keys.e!);
-    input.vaultPressed = Phaser.Input.Keyboard.JustDown(this.keys.q!);
+    input.powerPressed = Phaser.Input.Keyboard.JustDown(this.keys.q!);
     input.restart = Phaser.Input.Keyboard.JustDown(this.keys.r!);
     return input;
   }
@@ -282,6 +282,13 @@ class WindScene extends Phaser.Scene {
         drawHero(g, x - player.facing * trail * 22, y, player, 0.1 + (4 - trail) * 0.08);
       }
     }
+    if (player.earthSlamming) {
+      g.lineStyle(5, 0xffc263, 0.55);
+      for (let trail = 1; trail <= 4; trail += 1) {
+        g.lineBetween(x - 18, y - 55 - trail * 15, x - 8, y - 42 - trail * 8);
+        g.lineBetween(x + 18, y - 55 - trail * 15, x + 8, y - 42 - trail * 8);
+      }
+    }
     drawHero(g, x, y, player, 1);
   }
 
@@ -291,6 +298,16 @@ class WindScene extends Phaser.Scene {
       const x = burst.x - this.cameraX;
       const y = burst.y - this.cameraY;
       const alpha = Phaser.Math.Clamp(burst.ttl * 4, 0, 1);
+      if (burst.kind === "shockwave") {
+        const spread = (1 - Phaser.Math.Clamp(burst.ttl / 0.65, 0, 1)) * 145;
+        g.lineStyle(7, 0xffc15e, alpha);
+        g.beginPath();
+        g.arc(x, y + 2, spread, Math.PI, Math.PI * 2, false);
+        g.strokePath();
+        g.lineStyle(3, 0xffefaa, alpha * 0.8);
+        g.lineBetween(x - spread, y + 2, x + spread, y + 2);
+        continue;
+      }
       const count = burst.kind === "sigil" || burst.kind === "break" ? 12 : 7;
       const color =
         burst.kind === "fall"
@@ -301,6 +318,8 @@ class WindScene extends Phaser.Scene {
               ? 0xffe38b
               : burst.kind === "anchor"
                 ? 0x92fbff
+                : burst.kind === "slam"
+                  ? 0xffc15e
               : 0xc5fbff;
       g.lineStyle(burst.kind === "dash" ? 4 : 3, color, alpha);
       for (let index = 0; index < count; index += 1) {
@@ -337,7 +356,7 @@ class WindScene extends Phaser.Scene {
     g.fillRoundedRect(WIDTH - 178, 96, this.state.player.dashAvailable ? 143 : 0, 9, 4);
 
     this.statsText.setText(
-      `WIND SIGILS  ${collected} / ${this.state.sigils.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}\nFORM  ${this.state.player.form.toUpperCase()}   VAULTS  ${this.state.player.anchorUseCount}`,
+      `WIND SIGILS  ${collected} / ${this.state.sigils.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}\nFORM  ${this.state.player.form.toUpperCase()}   VAULTS ${this.state.player.anchorUseCount}   SLAMS ${this.state.player.earthSlamImpactCount}`,
     );
 
     const centerMessage =
@@ -366,8 +385,12 @@ function drawHero(
   alpha: number,
 ): void {
   const mountainForm = player.form === "mountain";
-  const lean = player.dashTimer > 0 ? player.facing * 10 : player.vx * 0.015;
-  const lift = player.gliding ? -8 : 0;
+  const lean = player.earthSlamming
+    ? 0
+    : player.dashTimer > 0
+      ? player.facing * 10
+      : player.vx * 0.015;
+  const lift = player.earthSlamming ? 8 : player.gliding ? -8 : 0;
   g.fillStyle(0x03101a, 0.22 * alpha);
   g.fillEllipse(x, y + 4, mountainForm ? 76 : 62, mountainForm ? 16 : 12);
 

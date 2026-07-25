@@ -24,7 +24,10 @@
     "jumpSpeed": 500,
     "gravity": 2150,
     "dashSpeed": 840,
-    "wallSlideSpeed": 165
+    "wallSlideSpeed": 165,
+    "earthSlam": {
+      "speed": 1100
+    }
   },
   "wallSlideSpeed": 105,
   "wallJumpX": 410,
