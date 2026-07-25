@@ -26,6 +26,20 @@ docs/               design notes, plans, session log
 .github/workflows/  CI (activates when a remote is added)
 ```
 
+## Building multiple games
+
+Each game is a self-contained project under `games/`. It keeps its own code,
+gameplay data, assets, tests, and build instructions. A new experiment starts
+from `templates/game-ts/`, so one game's design choices do not have to leak into
+another game.
+
+Current games:
+
+| Game | Folder | Purpose |
+|---|---|---|
+| Flame of Lanka Prototype | `games/flame-of-lanka-prototype/` | Combat baseline |
+| Hanuman: Leap to Lanka | `games/hanuman-wind-lab/` | Playable movement and combat vertical slice |
+
 ## Start here
 
 - Orientation: `.claude/knowledge/crawl/00-start-here.md`
@@ -34,5 +48,7 @@ docs/               design notes, plans, session log
 
 ## Status
 
-Crawl. Two browser experiments are ready for founder playtesting:
-`flame-of-lanka-prototype` tests combat and `hanuman-wind-lab` tests traversal.
+Crawl. Two browser games are preserved as separate, reproducible projects.
+`flame-of-lanka-prototype` is the combat baseline. `hanuman-wind-lab` is the
+current finished short vertical slice with movement, combat, original prototype
+assets, automated playtesting, and a complete local build.

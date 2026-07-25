@@ -3,6 +3,34 @@
 A finished short browser-game vertical slice about Hanuman crossing a moonlit
 coast on the path to Lanka.
 
+## Resume here
+
+This folder is the complete game project. A future session can start here
+without rebuilding the prototype or searching another folder.
+
+- Current state: playable founder-review checkpoint
+- Engine: Phaser 3 with TypeScript
+- Gameplay rules and physics: `content/design/`
+- Game code: `src/`
+- Original art sources: `assets/source/`
+- Asset provenance and approval status: `assets/ASSET_MANIFEST.yaml`
+- Automated checks and recorded replay: `tests/`
+- Bot playtesting and stability tools: `tools/`
+
+The current movement set includes variable jump, glide, wall jump, ground and
+air dash, Wind vaults, Mountain earth-slam, and form shifting. Combat includes
+a ground or airborne gada strike, two shadow sentries, hit recovery, and
+environment interactions. Hanuman has distinct idle, three-frame run, airborne,
+attack windup, and attack impact art.
+
+All generated art, its editable chroma source, and the prompts used to create it
+are stored in this project. The art is approved for prototype use only. It is
+not yet approved for commercial release.
+
+Generated folders such as `dist/` and installed dependencies such as
+`node_modules/` do not need to be preserved. They can be recreated from the
+tracked source and lockfile.
+
 ## Goal
 
 Collect seven wind sigils, defeat two shadow sentries, and reach the golden
