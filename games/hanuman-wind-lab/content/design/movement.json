@@ -32,7 +32,21 @@
   },
   "shadowSentry": {
     "width": 42,
-    "height": 66
+    "height": 66,
+    "activationRange": 520,
+    "telegraphTime": 0.55,
+    "pulseCooldown": 1.8,
+    "waveSpeed": 230,
+    "waveWidth": 38,
+    "waveHeight": 22,
+    "waveLifetime": 3
+  },
+  "gadaStrike": {
+    "reach": 78,
+    "height": 72,
+    "windupTime": 0.06,
+    "activeTime": 0.1,
+    "recoveryTime": 0.18
   },
   "wallSlideSpeed": 105,
   "wallJumpX": 410,

@@ -1,11 +1,20 @@
 import Phaser from "phaser";
+import movementContent from "../../content/design/movement.json";
+import courseContent from "../../content/design/course.json";
 import {
   createGame,
   EARTH_SLAM_SHOCKWAVE_RADIUS,
   emptyInput,
   findUsableWindAnchorIndex,
+  GADA_STRIKE_REACH,
+  GADA_STRIKE_TOTAL_TIME,
+  isFinishReady,
+  isGadaStrikeActive,
   SHADOW_SENTRY_HEIGHT,
+  SHADOW_SENTRY_TELEGRAPH_TIME,
   SHADOW_SENTRY_WIDTH,
+  SHADOW_WAVE_HEIGHT,
+  SHADOW_WAVE_WIDTH,
   step,
   FIXED_DT,
   type GameState,
@@ -13,6 +22,7 @@ import {
   type Platform,
   type Seal,
   type ShadowSentry,
+  type ShadowWave,
   type WindAnchor,
 } from "../sim/index";
 import {
@@ -20,10 +30,35 @@ import {
   consumeBufferedInput,
   createInputBuffer,
 } from "../platform/inputBuffer";
+import { GameAudio } from "./audio";
+
+const mythicBackgroundUrl = new URL(
+  "../../assets/source/backgrounds/leap-to-lanka-night.png",
+  import.meta.url,
+).href;
+const hanumanWindUrl = new URL(
+  "../../assets/source/characters/hanuman-wind.png",
+  import.meta.url,
+).href;
+const replayContentFingerprint = JSON.stringify({
+  movement: movementContent,
+  course: courseContent,
+});
 
 declare global {
   interface Window {
     __WIND_STATE__: GameState;
+    __WIND_PAUSED__: boolean;
+    __WIND_MUTED__: boolean;
+    __WIND_CAPTURE__: {
+      version: 1;
+      seed: number;
+      fixedDt: number;
+      inputs: Input[];
+      contentFingerprint: string;
+      finalStateJson: string;
+    };
+    __WIND_EXPORT_CAPTURE__: () => string;
   }
 }
 
@@ -32,6 +67,8 @@ const HEIGHT = 540;
 
 class WindScene extends Phaser.Scene {
   private state!: GameState;
+  private backgroundImage!: Phaser.GameObjects.Image;
+  private heroImage!: Phaser.GameObjects.Image;
   private worldGraphics!: Phaser.GameObjects.Graphics;
   private actorGraphics!: Phaser.GameObjects.Graphics;
   private fxGraphics!: Phaser.GameObjects.Graphics;
@@ -45,9 +82,20 @@ class WindScene extends Phaser.Scene {
   private accumulator = 0;
   private cameraX = 0;
   private cameraY = 0;
+  private pointerAttackQueued = false;
+  private paused = false;
+  private audio = new GameAudio();
+  private reducedMotion = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches;
 
   constructor() {
     super("wind");
+  }
+
+  preload(): void {
+    this.load.image("leap-to-lanka-night", mythicBackgroundUrl);
+    this.load.image("hanuman-wind", hanumanWindUrl);
   }
 
   create(): void {
@@ -55,14 +103,35 @@ class WindScene extends Phaser.Scene {
     const parsedSeed = seedText ? Number(seedText) : 205;
     this.state = createGame(Number.isFinite(parsedSeed) ? parsedSeed : 205);
     window.__WIND_STATE__ = this.state;
+    window.__WIND_PAUSED__ = false;
+    window.__WIND_MUTED__ = false;
+    window.__WIND_CAPTURE__ = {
+      version: 1,
+      seed: this.state.seed,
+      fixedDt: FIXED_DT,
+      inputs: [],
+      contentFingerprint: replayContentFingerprint,
+      finalStateJson: JSON.stringify(this.state),
+    };
+    window.__WIND_EXPORT_CAPTURE__ = () =>
+      JSON.stringify(window.__WIND_CAPTURE__, null, 2);
 
+    this.backgroundImage = this.add
+      .image(WIDTH / 2, HEIGHT / 2, "leap-to-lanka-night")
+      .setDisplaySize(WIDTH + 100, HEIGHT + 56)
+      .setDepth(-2);
     this.worldGraphics = this.add.graphics();
     this.actorGraphics = this.add.graphics();
+    this.heroImage = this.add
+      .image(0, 0, "hanuman-wind")
+      .setOrigin(0.5, 0.94)
+      .setDisplaySize(150, 100)
+      .setDepth(4);
     this.fxGraphics = this.add.graphics();
     this.uiGraphics = this.add.graphics();
 
     this.titleText = this.add
-      .text(WIDTH / 2, 17, "HANUMAN: WIND LAB", {
+      .text(WIDTH / 2, 17, "HANUMAN: LEAP TO LANKA", {
         fontFamily: "Georgia, serif",
         fontSize: "21px",
         fontStyle: "bold",
@@ -91,7 +160,7 @@ class WindScene extends Phaser.Scene {
       .text(
         WIDTH / 2,
         HEIGHT - 18,
-        "MOVE A/D   JUMP / GLIDE SPACE   DASH SHIFT   FORM E   Q VAULT / SLAM",
+        "MOVE A/D   JUMP SPACE   DASH SHIFT   ATTACK CLICK / J   FORM E   POWER Q   MUTE M",
         {
           fontFamily: "Arial, sans-serif",
           fontSize: "12px",
@@ -125,24 +194,55 @@ class WindScene extends Phaser.Scene {
       shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
       e: Phaser.Input.Keyboard.KeyCodes.E,
       q: Phaser.Input.Keyboard.KeyCodes.Q,
+      j: Phaser.Input.Keyboard.KeyCodes.J,
       r: Phaser.Input.Keyboard.KeyCodes.R,
+      escape: Phaser.Input.Keyboard.KeyCodes.ESC,
+      m: Phaser.Input.Keyboard.KeyCodes.M,
+      f8: Phaser.Input.Keyboard.KeyCodes.F8,
     }) as Record<string, Phaser.Input.Keyboard.Key>;
 
+    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (!pointer.leftButtonDown()) return;
+      this.pointerAttackQueued = true;
+      this.audio.unlock();
+    });
+    this.game.events.on("blur", () => this.setPaused(true));
     this.draw();
   }
 
   override update(_time: number, deltaMs: number): void {
+    if (Phaser.Input.Keyboard.JustDown(this.keys.escape!)) {
+      this.setPaused(!this.paused);
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.keys.m!)) {
+      this.audio.unlock();
+      this.audio.toggleMuted();
+      window.__WIND_MUTED__ = this.audio.isMuted;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.keys.f8!)) {
+      this.downloadReplayCapture();
+    }
+    if (this.paused) {
+      this.accumulator = 0;
+      this.draw();
+      return;
+    }
+
     this.bufferedInput = bufferInput(this.bufferedInput, this.readInput());
     this.accumulator += Math.min(deltaMs, 50) / 1000;
     while (this.accumulator >= FIXED_DT) {
+      const fixedInput = consumeBufferedInput(this.bufferedInput);
+      window.__WIND_CAPTURE__.inputs.push({ ...fixedInput });
       this.state = step(
         this.state,
-        consumeBufferedInput(this.bufferedInput),
+        fixedInput,
         FIXED_DT,
       );
+      window.__WIND_CAPTURE__.finalStateJson = JSON.stringify(this.state);
       this.accumulator -= FIXED_DT;
     }
     window.__WIND_STATE__ = this.state;
+    this.audio.sync(this.state);
 
     const targetX = Phaser.Math.Clamp(
       this.state.player.x - WIDTH * 0.34,
@@ -154,9 +254,43 @@ class WindScene extends Phaser.Scene {
       0,
       this.state.worldHeight - HEIGHT,
     );
-    this.cameraX = Phaser.Math.Linear(this.cameraX, targetX, 0.08);
-    this.cameraY = Phaser.Math.Linear(this.cameraY, targetY, 0.07);
+    this.cameraX = Phaser.Math.Linear(
+      this.cameraX,
+      targetX,
+      this.reducedMotion ? 0.2 : 0.08,
+    );
+    this.cameraY = Phaser.Math.Linear(
+      this.cameraY,
+      targetY,
+      this.reducedMotion ? 0.2 : 0.07,
+    );
+    this.backgroundImage.setPosition(
+      WIDTH / 2 - this.cameraX * 0.015,
+      HEIGHT / 2 - this.cameraY * 0.01,
+    );
     this.draw();
+  }
+
+  private setPaused(paused: boolean): void {
+    this.paused = paused;
+    window.__WIND_PAUSED__ = paused;
+    this.accumulator = 0;
+    this.bufferedInput = createInputBuffer();
+    this.pointerAttackQueued = false;
+    this.audio.setPaused(paused);
+    if (paused) this.input.keyboard?.resetKeys();
+  }
+
+  private downloadReplayCapture(): void {
+    const blob = new Blob([window.__WIND_EXPORT_CAPTURE__()], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `hanuman-capture-seed-${window.__WIND_CAPTURE__.seed}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   private readInput(): Input {
@@ -169,6 +303,20 @@ class WindScene extends Phaser.Scene {
     input.dashPressed = Phaser.Input.Keyboard.JustDown(this.keys.shift!);
     input.formPressed = Phaser.Input.Keyboard.JustDown(this.keys.e!);
     input.powerPressed = Phaser.Input.Keyboard.JustDown(this.keys.q!);
+    input.attackPressed =
+      Phaser.Input.Keyboard.JustDown(this.keys.j!) ||
+      this.pointerAttackQueued;
+    this.pointerAttackQueued = false;
+    if (
+      input.moveX !== 0 ||
+      input.jumpPressed ||
+      input.dashPressed ||
+      input.formPressed ||
+      input.powerPressed ||
+      input.attackPressed
+    ) {
+      this.audio.unlock();
+    }
     input.restart = Phaser.Input.Keyboard.JustDown(this.keys.r!);
     return input;
   }
@@ -182,36 +330,13 @@ class WindScene extends Phaser.Scene {
 
   private drawWorld(): void {
     const g = this.worldGraphics.clear();
-    g.fillGradientStyle(0x071525, 0x071525, 0x256986, 0x4d9ba3, 1);
+    const motionTick = this.reducedMotion ? 0 : this.state.tick;
+    g.fillGradientStyle(0x071525, 0x071525, 0x143d4d, 0x1c5b62, 0.22);
     g.fillRect(0, 0, WIDTH, HEIGHT);
-
-    g.fillStyle(0xf9f4c6, 0.88);
-    g.fillCircle(760 - this.cameraX * 0.03, 91 - this.cameraY * 0.05, 38);
-    g.fillStyle(0xd8f6f2, 0.16);
-    g.fillCircle(760 - this.cameraX * 0.03, 91 - this.cameraY * 0.05, 57);
-
-    for (let layer = 0; layer < 3; layer += 1) {
-      const parallax = 0.05 + layer * 0.07;
-      const baseY = 390 + layer * 45 - this.cameraY * parallax;
-      const color = [0x183a51, 0x174b5c, 0x155961][layer]!;
-      g.fillStyle(color, 0.9);
-      for (let x = -180; x < this.state.worldWidth + 300; x += 290) {
-        const sx = x - this.cameraX * parallax;
-        const height = 120 + ((((x / 10 + layer * 43) % 110) + 110) % 110);
-        g.fillTriangle(
-          sx - 100,
-          baseY,
-          sx + 40,
-          baseY - height,
-          sx + 180,
-          baseY,
-        );
-      }
-    }
 
     for (let index = 0; index < 22; index += 1) {
       const x =
-        ((index * 231 + this.state.tick * (0.35 + (index % 3) * 0.12)) %
+        ((index * 231 + motionTick * (0.35 + (index % 3) * 0.12)) %
           (WIDTH + 420)) -
         210;
       const y = 85 + ((index * 97) % 300);
@@ -220,14 +345,13 @@ class WindScene extends Phaser.Scene {
       g.lineBetween(x, y, x + length, y - 4);
     }
 
-    drawCloud(g, 140 - this.cameraX * 0.11, 122 - this.cameraY * 0.04, 1);
-    drawCloud(g, 610 - this.cameraX * 0.08, 170 - this.cameraY * 0.05, 0.78);
-    drawCloud(g, 1120 - this.cameraX * 0.1, 105 - this.cameraY * 0.03, 1.2);
-
     for (const platform of this.state.platforms)
       drawPlatform(g, platform, this.cameraX, this.cameraY);
     for (const seal of this.state.seals) {
       if (!seal.broken) drawSeal(g, seal, this.cameraX, this.cameraY);
+    }
+    for (const wave of this.state.shadowWaves) {
+      drawShadowWave(g, wave, this.cameraX, this.cameraY, motionTick);
     }
     for (const sentry of this.state.shadowSentries) {
       if (!sentry.defeated) {
@@ -236,7 +360,7 @@ class WindScene extends Phaser.Scene {
           sentry,
           this.cameraX,
           this.cameraY,
-          this.state.tick,
+          motionTick,
         );
       }
     }
@@ -252,7 +376,7 @@ class WindScene extends Phaser.Scene {
         anchor,
         this.cameraX,
         this.cameraY,
-        this.state.tick,
+        motionTick,
         anchorIndex === usableAnchorIndex,
       );
     }
@@ -267,7 +391,7 @@ class WindScene extends Phaser.Scene {
         g.strokeCircle(x, y, 15);
         continue;
       }
-      const pulse = 1 + Math.sin((this.state.tick + index * 17) * 0.08) * 0.12;
+      const pulse = 1 + Math.sin((motionTick + index * 17) * 0.08) * 0.12;
       g.fillStyle(0x9cf7ff, 0.12);
       g.fillCircle(x, y, 30 * pulse);
       g.lineStyle(4, 0xa9f8ff, 0.95);
@@ -284,13 +408,13 @@ class WindScene extends Phaser.Scene {
       g,
       this.state.finish.x - this.cameraX,
       this.state.finish.y - this.cameraY,
-      this.state.sigils.every((sigil) => sigil.collected),
+      isFinishReady(this.state),
     );
 
     g.fillStyle(0x061321, 0.84);
     g.fillRect(0, HEIGHT - 64, WIDTH, 64);
     for (let wave = 0; wave < 16; wave += 1) {
-      const x = wave * 75 - ((this.state.tick * 0.25) % 75);
+      const x = wave * 75 - ((motionTick * 0.25) % 75);
       g.lineStyle(2, 0x62b8cb, 0.24);
       g.beginPath();
       g.arc(x, HEIGHT - 54, 35, Math.PI, Math.PI * 2, false);
@@ -304,14 +428,14 @@ class WindScene extends Phaser.Scene {
     const x = player.x - this.cameraX;
     const y = player.y - this.cameraY;
 
-    if (player.dashTimer > 0) {
+    if (player.dashTimer > 0 && !this.reducedMotion) {
       for (let trail = 4; trail >= 1; trail -= 1) {
-        drawHero(
-          g,
+        g.fillStyle(0x8ff7ff, 0.05 + (4 - trail) * 0.035);
+        g.fillEllipse(
           x - player.facing * trail * 22,
-          y,
-          player,
-          0.1 + (4 - trail) * 0.08,
+          y - 34,
+          player.form === "mountain" ? 52 : 42,
+          player.form === "mountain" ? 72 : 62,
         );
       }
     }
@@ -322,7 +446,70 @@ class WindScene extends Phaser.Scene {
         g.lineBetween(x + 18, y - 55 - trail * 15, x + 8, y - 42 - trail * 8);
       }
     }
-    drawHero(g, x, y, player, 1);
+    if (player.attackTimer > 0) {
+      const progress = 1 - player.attackTimer / GADA_STRIKE_TOTAL_TIME;
+      const angle =
+        player.attackFacing === 1
+          ? -1.35 + progress * 2.25
+          : Math.PI + 1.35 - progress * 2.25;
+      const handX = x + player.attackFacing * 7;
+      const handY = y - 35;
+      g.lineStyle(
+        isGadaStrikeActive(player) ? 10 : 5,
+        0xffd56a,
+        isGadaStrikeActive(player) ? 0.4 : 0.18,
+      );
+      g.beginPath();
+      g.arc(
+        handX,
+        handY,
+        GADA_STRIKE_REACH * 0.72,
+        angle - 0.55,
+        angle + 0.18,
+        false,
+      );
+      g.strokePath();
+    }
+
+    const attackProgress =
+      player.attackTimer > 0
+        ? 1 - player.attackTimer / GADA_STRIKE_TOTAL_TIME
+        : 0;
+    const attackLean =
+      player.attackTimer > 0
+        ? Math.sin(attackProgress * Math.PI) *
+          player.attackFacing *
+          0.16
+        : 0;
+    const motionLean = player.earthSlamming
+      ? 0
+      : player.dashTimer > 0
+        ? player.facing * 0.13
+        : Phaser.Math.Clamp(player.vx / 1700, -0.08, 0.08);
+    const lift = player.earthSlamming ? 10 : player.gliding ? -8 : 0;
+    const formScale = player.form === "mountain" ? 1.1 : 1;
+    this.heroImage
+      .setPosition(x, y + lift + 3)
+      .setFlipX(
+        (player.attackTimer > 0 ? player.attackFacing : player.facing) < 0,
+      )
+      .setRotation(motionLean + attackLean)
+      .setScale((150 / 1536) * formScale, (100 / 1024) * formScale)
+      .setTint(player.form === "mountain" ? 0xffd19a : 0xffffff)
+      .setAlpha(player.dashTimer > 0 ? 0.9 : 1)
+      .setVisible(
+        x > -180 && x < WIDTH + 180 && y > -130 && y < HEIGHT + 130,
+      );
+
+    if (player.form === "mountain") {
+      g.lineStyle(4, 0xffb655, 0.38);
+      g.strokeEllipse(x, y - 43 + lift, 76, 98);
+    } else if (player.gliding) {
+      g.lineStyle(3, 0xcffcff, 0.45);
+      g.beginPath();
+      g.arc(x, y - 36 + lift, 62, Math.PI * 1.05, Math.PI * 1.95, false);
+      g.strokePath();
+    }
   }
 
   private drawEffects(): void {
@@ -347,6 +534,12 @@ class WindScene extends Phaser.Scene {
       const color =
         burst.kind === "hit"
           ? 0xff5a70
+          : burst.kind === "pulse"
+            ? 0xd07aff
+            : burst.kind === "dispel"
+              ? 0x8ff7ff
+              : burst.kind === "strike"
+                ? 0xffd56a
           : burst.kind === "defeat"
             ? 0xc67cff
             : burst.kind === "fall"
@@ -363,7 +556,10 @@ class WindScene extends Phaser.Scene {
       g.lineStyle(burst.kind === "dash" ? 4 : 3, color, alpha);
       for (let index = 0; index < count; index += 1) {
         const angle = (Math.PI * 2 * index) / count;
-        const distance = (1 - alpha) * (burst.kind === "sigil" ? 75 : 42);
+        const distance =
+          (1 - alpha) *
+          (burst.kind === "sigil" ? 75 : 42) *
+          (this.reducedMotion ? 0.4 : 1);
         const dx = Math.cos(angle) * distance;
         const dy = Math.sin(angle) * distance;
         g.lineBetween(
@@ -384,6 +580,13 @@ class WindScene extends Phaser.Scene {
     const sentriesDefeated = this.state.shadowSentries.filter(
       (sentry) => sentry.defeated,
     ).length;
+    const shadowHits =
+      this.state.player.sentryHitCount +
+      this.state.player.shadowWaveHitCount;
+    const pulsesFired = this.state.shadowSentries.reduce(
+      (total, sentry) => total + sentry.pulseCount,
+      0,
+    );
 
     g.fillStyle(0x06131e, 0.82);
     g.fillRoundedRect(20, 18, 230, 72, 10);
@@ -411,7 +614,7 @@ class WindScene extends Phaser.Scene {
     );
 
     this.statsText.setText(
-      `WIND SIGILS  ${collected} / ${this.state.sigils.length}   SENTRIES ${sentriesDefeated} / ${this.state.shadowSentries.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}   HITS ${this.state.player.sentryHitCount}\nFORM  ${this.state.player.form.toUpperCase()}   VAULTS ${this.state.player.anchorUseCount}   SLAMS ${this.state.player.earthSlamImpactCount}`,
+      `WIND SIGILS  ${collected} / ${this.state.sigils.length}   SENTRIES ${sentriesDefeated} / ${this.state.shadowSentries.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}   HITS ${shadowHits}   SOUND ${this.audio.isMuted ? "OFF" : "ON"}\nFORM  ${this.state.player.form.toUpperCase()}   VAULTS ${this.state.player.anchorUseCount}   SLAMS ${this.state.player.earthSlamImpactCount}   PULSES ${pulsesFired}`,
     );
 
     const nearCrackedStone = this.state.seals.some((seal) => {
@@ -424,18 +627,28 @@ class WindScene extends Phaser.Scene {
       return Math.abs(this.state.player.x - closestX) <= 220;
     });
     const centerMessage =
-      this.state.status === "won"
-        ? `THE WIND REMEMBERS\n${formatTime(this.state.elapsed)}  •  ${this.state.falls} FALLS\nPRESS R TO RUN AGAIN`
+      this.paused
+        ? "PAUSED\nPRESS ESC TO RETURN"
+        : this.state.status === "won"
+        ? `THE PATH TO LANKA OPENS\n${formatTime(this.state.elapsed)}  •  ${this.state.falls} FALLS  •  ${shadowHits} HITS\nPRESS R TO RUN AGAIN`
         : !this.state.started
-          ? "PRESS A / D TO BEGIN THE LEAP"
-          : collected === this.state.sigils.length
-            ? "ALL SIGILS FOUND. REACH THE GOLDEN SHRINE."
-            : this.state.shadowSentries.some(
+          ? "THE WIND CARRIES A CALL ACROSS THE SEA\nCOLLECT 7 SIGILS. DEFEAT 2 SENTRIES. REACH THE SHRINE.\nPRESS A / D TO BEGIN"
+          : collected === this.state.sigils.length &&
+              !this.state.shadowSentries.every((sentry) => sentry.defeated)
+            ? "THE SHRINE IS SHADOW-BOUND. DEFEAT BOTH SENTRIES."
+            : isFinishReady(this.state)
+              ? "THE PATH IS CLEAR. REACH THE GOLDEN SHRINE."
+            : this.state.shadowWaves.some(
+                  (wave) =>
+                    Math.abs(wave.x - this.state.player.x) <= 260,
+                )
+              ? "SHADOW WAVE\nJUMP OR VAULT. MOUNTAIN SLAM DISPELS."
+              : this.state.shadowSentries.some(
                   (sentry) =>
                     !sentry.defeated &&
                     Math.abs(sentry.x - this.state.player.x) <= 220,
                 )
-              ? "SHADOW SENTRY\nEVADE OR USE MOUNTAIN DASH / SLAM"
+              ? "SHADOW SENTRY\nGADA: J / CLICK. MOUNTAIN: DASH OR SLAM."
               : nearCrackedStone
                 ? "CRACKED STONE\nMOUNTAIN: DASH OR JUMP, THEN Q"
                 : "";
@@ -463,6 +676,24 @@ function drawShadowSentry(
   const headRadius = SHADOW_SENTRY_HEIGHT * 0.29;
   const headY = y - SHADOW_SENTRY_HEIGHT * 0.74;
   const pulse = 1 + Math.sin(tick * 0.12 + sentry.x) * 0.08;
+  const telegraphProgress =
+    sentry.telegraphTimer > 0
+      ? 1 - sentry.telegraphTimer / SHADOW_SENTRY_TELEGRAPH_TIME
+      : 0;
+  if (sentry.telegraphTimer > 0) {
+    g.lineStyle(5, 0xf09bff, 0.45 + telegraphProgress * 0.5);
+    g.strokeCircle(
+      x,
+      y - SHADOW_SENTRY_HEIGHT * 0.52,
+      SHADOW_SENTRY_HEIGHT * (0.7 + telegraphProgress * 0.45),
+    );
+    g.lineStyle(2, 0xffd1ff, 0.7);
+    g.strokeCircle(
+      x,
+      y - SHADOW_SENTRY_HEIGHT * 0.52,
+      SHADOW_SENTRY_HEIGHT * (0.35 + telegraphProgress * 0.25),
+    );
+  }
   g.fillStyle(0x702a99, 0.14);
   g.fillCircle(
     x,
@@ -486,93 +717,40 @@ function drawShadowSentry(
   g.fillCircle(x + halfWidth / 3, headY - 2, 3);
 }
 
-function drawHero(
+function drawShadowWave(
   g: Phaser.GameObjects.Graphics,
-  x: number,
-  y: number,
-  player: GameState["player"],
-  alpha: number,
+  wave: ShadowWave,
+  cameraX: number,
+  cameraY: number,
+  tick: number,
 ): void {
-  const mountainForm = player.form === "mountain";
-  const lean = player.earthSlamming
-    ? 0
-    : player.dashTimer > 0
-      ? player.facing * 10
-      : player.vx * 0.015;
-  const lift = player.earthSlamming ? 8 : player.gliding ? -8 : 0;
-  g.fillStyle(0x03101a, 0.22 * alpha);
-  g.fillEllipse(x, y + 4, mountainForm ? 76 : 62, mountainForm ? 16 : 12);
-
-  if (mountainForm) {
-    g.fillStyle(0xffb655, 0.12 * alpha);
-    g.fillCircle(x, y - 29, 39);
-  }
-
-  g.lineStyle(5, 0xb76834, alpha);
-  g.lineBetween(x - player.facing * 10, y - 31, x - player.facing * 34, y - 22);
-  g.lineBetween(x - player.facing * 34, y - 22, x - player.facing * 43, y - 7);
-
-  g.fillStyle(mountainForm ? 0xa94e25 : 0xc76e34, alpha);
-  g.fillEllipse(
-    x + lean * 0.15,
-    y - 27 + lift,
-    mountainForm ? 40 : 30,
-    mountainForm ? 46 : 39,
-  );
-  g.fillStyle(0xf1c885, alpha);
-  g.fillCircle(
-    x + player.facing * 4 + lean * 0.25,
-    y - 55 + lift,
-    mountainForm ? 16 : 13,
-  );
+  const x = wave.x - cameraX;
+  const y = wave.y - cameraY;
+  if (x < -80 || x > WIDTH + 80) return;
+  const direction = wave.vx < 0 ? -1 : 1;
+  const flutter = Math.sin(tick * 0.25 + wave.id) * 3;
+  g.fillStyle(0x7a2ca3, 0.2);
+  g.fillEllipse(x, y - SHADOW_WAVE_HEIGHT * 0.45, SHADOW_WAVE_WIDTH * 1.6, SHADOW_WAVE_HEIGHT * 1.3);
+  g.fillStyle(0x241034, 0.96);
   g.fillTriangle(
-    x + player.facing * 11,
-    y - 59 + lift,
-    x + player.facing * 23,
-    y - 55 + lift,
-    x + player.facing * 10,
-    y - 49 + lift,
+    x - SHADOW_WAVE_WIDTH * 0.5,
+    y,
+    x + direction * SHADOW_WAVE_WIDTH * 0.5,
+    y - SHADOW_WAVE_HEIGHT + flutter,
+    x + SHADOW_WAVE_WIDTH * 0.5,
+    y,
   );
-  g.fillStyle(0x271b19, alpha);
-  g.fillCircle(x + player.facing * 8, y - 57 + lift, 2);
-
-  g.fillStyle(0xe9ad3d, alpha);
-  g.fillRect(x - 14, y - 36 + lift, 28, 6);
-  g.fillStyle(0xa92f26, alpha);
-  const scarfLength = player.dashTimer > 0 ? 62 : player.gliding ? 50 : 32;
-  g.fillTriangle(
-    x - player.facing * 8,
-    y - 42 + lift,
-    x - player.facing * scarfLength,
-    y - 50 + lift,
-    x - player.facing * 13,
-    y - 31 + lift,
+  g.lineStyle(3, 0xd57cff, 0.9);
+  g.beginPath();
+  g.arc(
+    x,
+    y,
+    SHADOW_WAVE_WIDTH * 0.48,
+    Math.PI,
+    Math.PI * 2,
+    false,
   );
-
-  g.lineStyle(7, 0xeac08a, alpha);
-  if (player.gliding) {
-    g.lineBetween(x - 11, y - 29, x - 25, y - 48);
-    g.lineBetween(x + 11, y - 29, x + 25, y - 48);
-    g.lineBetween(x - 9, y - 10, x - 17, y);
-    g.lineBetween(x + 9, y - 10, x + 17, y);
-  } else {
-    const stride =
-      Math.sin(player.x * 0.08) * (Math.abs(player.vx) > 20 ? 8 : 2);
-    g.lineBetween(x - 9, y - 14, x - 12 - stride, y);
-    g.lineBetween(x + 9, y - 14, x + 12 + stride, y);
-  }
-
-  if (player.wallSide !== 0) {
-    g.lineStyle(3, 0xcffcff, 0.7);
-    for (let index = 0; index < 3; index += 1) {
-      g.lineBetween(
-        x + player.wallSide * 19,
-        y - 9 - index * 12,
-        x + player.wallSide * 34,
-        y - 14 - index * 12,
-      );
-    }
-  }
+  g.strokePath();
 }
 
 function drawSeal(
@@ -646,18 +824,6 @@ function drawPlatform(
       y + Math.min(48, platform.height - 3),
     );
   }
-}
-
-function drawCloud(
-  g: Phaser.GameObjects.Graphics,
-  x: number,
-  y: number,
-  scale: number,
-): void {
-  g.fillStyle(0xbbe9e7, 0.12);
-  g.fillEllipse(x, y, 190 * scale, 39 * scale);
-  g.fillCircle(x - 42 * scale, y - 8 * scale, 28 * scale);
-  g.fillCircle(x + 31 * scale, y - 12 * scale, 34 * scale);
 }
 
 function drawShrine(

@@ -17,12 +17,14 @@ describe("movement input buffer", () => {
     buffered = bufferInput(buffered, { ...emptyInput(), dashPressed: true });
     buffered = bufferInput(buffered, { ...emptyInput(), formPressed: true });
     buffered = bufferInput(buffered, { ...emptyInput(), powerPressed: true });
+    buffered = bufferInput(buffered, { ...emptyInput(), attackPressed: true });
 
     expect(consumeBufferedInput(buffered)).toMatchObject({
       jumpPressed: true,
       dashPressed: true,
       formPressed: true,
       powerPressed: true,
+      attackPressed: true,
       jumpHeld: false,
     });
     expect(consumeBufferedInput(buffered)).toMatchObject({
@@ -30,6 +32,7 @@ describe("movement input buffer", () => {
       dashPressed: false,
       formPressed: false,
       powerPressed: false,
+      attackPressed: false,
     });
   });
 });

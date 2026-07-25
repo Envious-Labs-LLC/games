@@ -1,4 +1,8 @@
-import { runOne } from "./randomBot";
+import {
+  runOne,
+  runRecoveryProfile,
+  runSlamCounterProfile,
+} from "./randomBot";
 
 function flagNumber(name: string, fallback: number): number {
   const index = process.argv.indexOf(name);
@@ -7,6 +11,10 @@ function flagNumber(name: string, fallback: number): number {
 }
 
 const runs = flagNumber("--runs", 100);
+if (!Number.isInteger(runs) || runs <= 0) {
+  console.error("--runs must be a positive integer");
+  process.exit(2);
+}
 let crashes = 0;
 let wins = 0;
 let timeouts = 0;
@@ -26,6 +34,13 @@ let runsDefeatingAllSentries = 0;
 let runsUsingDashOnSentry = 0;
 let runsUsingEarthSlamOnSentry = 0;
 let totalSentryHits = 0;
+let runsSeeingShadowWave = 0;
+let totalShadowWaveHits = 0;
+let runsUsingGadaOnSentry = 0;
+let recoveryProfilesPassing = 0;
+let slamCounterProfilesPassing = 0;
+const gameplayPaths = new Set<string>();
+const routeVariantsRun = new Set<number>();
 
 for (let index = 0; index < runs; index += 1) {
   try {
@@ -56,6 +71,33 @@ for (let index = 0; index < runs; index += 1) {
       runsUsingEarthSlamOnSentry += 1;
     }
     totalSentryHits += result.sentryHits;
+    if (result.shadowWavesFired > 0) runsSeeingShadowWave += 1;
+    totalShadowWaveHits += result.shadowWaveHits;
+    if (result.gadaDefeats > 0) runsUsingGadaOnSentry += 1;
+    gameplayPaths.add(
+      [
+        result.ticks,
+        result.jumpCommands,
+        result.dashCommands,
+        result.formShifts,
+      ].join(":"),
+    );
+    routeVariantsRun.add(result.routeVariant);
+    const recovery = runRecoveryProfile(5000 + index);
+    if (
+      recovery.waveHitRecovered &&
+      recovery.fallRecovered &&
+      recovery.wavesClearedAfterHit
+    ) {
+      recoveryProfilesPassing += 1;
+    }
+    const slamCounter = runSlamCounterProfile(7000 + index);
+    if (
+      slamCounter.waveDispelled &&
+      slamCounter.playerRecoveredOnGround
+    ) {
+      slamCounterProfilesPassing += 1;
+    }
   } catch {
     crashes += 1;
   }
@@ -84,6 +126,13 @@ console.log(
     runsUsingDashOnSentry,
     runsUsingEarthSlamOnSentry,
     totalSentryHits,
+    runsSeeingShadowWave,
+    totalShadowWaveHits,
+    runsUsingGadaOnSentry,
+    recoveryProfilesPassing,
+    slamCounterProfilesPassing,
+    distinctGameplayPaths: gameplayPaths.size,
+    routeVariantsRun: routeVariantsRun.size,
     averageEarthSlams:
       runs > 0 ? Number((totalEarthSlamImpacts / runs).toFixed(2)) : 0,
   }),
@@ -99,8 +148,14 @@ process.exit(
     runsBreakingExactlyOneSealWithEarthSlam !== runs ||
     runsDefeatingAllSentries !== runs ||
     runsUsingDashOnSentry !== runs ||
-    runsUsingEarthSlamOnSentry !== runs ||
+    runsUsingGadaOnSentry !== runs ||
+    recoveryProfilesPassing !== runs ||
+    slamCounterProfilesPassing !== runs ||
+    gameplayPaths.size < Math.min(3, runs) ||
+    routeVariantsRun.size < Math.min(3, runs) ||
     totalSentryHits !== 0 ||
+    runsSeeingShadowWave !== runs ||
+    totalShadowWaveHits !== 0 ||
     totalEarthSlamStarts !== totalEarthSlamImpacts
     ? 1
     : 0,

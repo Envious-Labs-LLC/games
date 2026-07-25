@@ -1,0 +1,22 @@
+assets:
+  - id: leap-to-lanka-night
+    file: source/backgrounds/leap-to-lanka-night.png
+    type: background
+    source: OpenAI built-in image generation
+    prompt: source/prompts/leap-to-lanka-night.md
+    generated: 2026-07-25
+    approvedForCommercial: false
+    humanReviewed: false
+    prototypeUseApproved: true
+    notes: Original prototype background. Requires founder review before production use.
+  - id: hanuman-wind
+    file: source/characters/hanuman-wind.png
+    sourceFile: source/characters/hanuman-wind-chroma.png
+    type: character
+    source: OpenAI built-in image generation
+    prompt: source/prompts/hanuman-wind.md
+    generated: 2026-07-25
+    approvedForCommercial: false
+    humanReviewed: false
+    prototypeUseApproved: true
+    notes: Original transparent prototype hero. Requires founder review before production use.

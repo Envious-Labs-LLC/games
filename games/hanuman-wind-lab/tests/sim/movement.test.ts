@@ -4,11 +4,17 @@ import {
   EARTH_SLAM_SHOCKWAVE_RADIUS,
   emptyInput,
   findUsableWindAnchorIndex,
+  GADA_STRIKE_REACH,
   step,
   FIXED_DT,
   PLAYER_HALF_WIDTH,
   PLAYER_HEIGHT,
+  SHADOW_SENTRY_ACTIVATION_RANGE,
+  SHADOW_SENTRY_PULSE_COOLDOWN,
   SHADOW_SENTRY_WIDTH,
+  SHADOW_SENTRY_TELEGRAPH_TIME,
+  SHADOW_WAVE_LIFETIME,
+  SHADOW_WAVE_WIDTH,
   type GameState,
   type Input,
 } from "../../src/sim/index";
@@ -35,6 +41,7 @@ describe("Hanuman Wind Lab movement", () => {
             dashPressed: tick % 127 === 40,
             formPressed: tick % 211 === 80,
             powerPressed: tick % 173 === 60,
+            attackPressed: tick % 149 === 55,
             restart: false,
           },
           FIXED_DT,
@@ -532,6 +539,7 @@ describe("Hanuman Wind Lab movement", () => {
   it("finishes only after an earth-slam lands at the shrine", () => {
     let state = createGame(74);
     for (const sigil of state.sigils) sigil.collected = true;
+    for (const sentry of state.shadowSentries) sentry.defeated = true;
     state.player.form = "mountain";
     state.player.x = state.finish.x;
     state.player.y = 350;
@@ -851,8 +859,24 @@ describe("Hanuman Wind Lab movement", () => {
     let state = createGame(4);
     state.started = true;
     for (const sigil of state.sigils) sigil.collected = true;
+    for (const sentry of state.shadowSentries) sentry.defeated = true;
     state.player.x = state.finish.x;
     state.player.y = state.finish.y;
+    state = step(state, emptyInput(), FIXED_DT);
+    expect(state.status).toBe("won");
+  });
+
+  it("keeps the shrine locked until both sentries are defeated", () => {
+    let state = createGame(95);
+    state.started = true;
+    for (const sigil of state.sigils) sigil.collected = true;
+    state.player.x = state.finish.x;
+    state.player.y = state.finish.y;
+
+    state = step(state, emptyInput(), FIXED_DT);
+    expect(state.status).toBe("playing");
+
+    for (const sentry of state.shadowSentries) sentry.defeated = true;
     state = step(state, emptyInput(), FIXED_DT);
     expect(state.status).toBe("won");
   });
@@ -1000,5 +1024,491 @@ describe("Hanuman Wind Lab movement", () => {
     expect(state.player.sentryDashDefeatCount).toBe(0);
     expect(state.player.earthSlamSentryDefeatCount).toBe(0);
     expect(state.player.sentryHitCount).toBe(0);
+    expect(state.player.shadowWaveHitCount).toBe(0);
+    expect(state.player.earthSlamWaveDispelCount).toBe(0);
+    expect(state.shadowWaves).toEqual([]);
+  });
+
+  it("telegraphs before firing a ground wave toward the player", () => {
+    let state = createGame(88);
+    const sentry = state.shadowSentries[0]!;
+    state.shadowSentries[1]!.defeated = true;
+    state.started = true;
+    state.player.x = sentry.x - 300;
+    state.player.y = 400;
+    state.player.onGround = false;
+
+    state = step(state, emptyInput(), FIXED_DT);
+    expect(sentry.telegraphTimer).toBe(SHADOW_SENTRY_TELEGRAPH_TIME);
+    expect(state.shadowWaves).toEqual([]);
+
+    state = runTicks(
+      state,
+      emptyInput(),
+      Math.ceil(SHADOW_SENTRY_TELEGRAPH_TIME / FIXED_DT) + 1,
+    );
+    expect(sentry.telegraphTimer).toBe(0);
+    expect(sentry.pulseCount).toBe(1);
+    expect(state.shadowWaves).toHaveLength(1);
+    expect(state.shadowWaves[0]!.vx).toBeLessThan(0);
+  });
+
+  it("returns a grounded player hit by a shadow wave to checkpoint", () => {
+    let state = createGame(89);
+    state.started = true;
+    state.checkpoint = { x: 500, y: 382 };
+    state.player.x = 900;
+    state.player.y = 500;
+    state.shadowWaves.push({
+      id: state.nextShadowWaveId++,
+      x: state.player.x + 20,
+      y: 500,
+      vx: -230,
+      ttl: 2,
+      sourceIndex: 0,
+    });
+
+    state = step(state, emptyInput(), FIXED_DT);
+
+    expect(state.player.shadowWaveHitCount).toBe(1);
+    expect(state.player.sentryHitCount).toBe(0);
+    expect(state.falls).toBe(0);
+    expect(state.player.x).toBe(500);
+    expect(state.player.y).toBe(382);
+    expect(state.shadowWaves).toEqual([]);
+  });
+
+  it("lets an airborne player clear a shadow wave", () => {
+    let state = createGame(90);
+    state.started = true;
+    state.player.x = 900;
+    state.player.y = 450;
+    state.player.onGround = false;
+    state.player.coyoteTimer = 0;
+    state.shadowWaves.push({
+      id: state.nextShadowWaveId++,
+      x: state.player.x,
+      y: 500,
+      vx: 230,
+      ttl: 2,
+      sourceIndex: 0,
+    });
+
+    state = step(state, emptyInput(), FIXED_DT);
+
+    expect(state.player.shadowWaveHitCount).toBe(0);
+    expect(state.shadowWaves).toHaveLength(1);
+  });
+
+  it("lets an active Mountain dash pass through a shadow wave", () => {
+    let state = createGame(91);
+    state.player.form = "mountain";
+    state.player.x = 900;
+    state.player.y = 500;
+    state.player.onGround = true;
+    state.shadowWaves.push({
+      id: state.nextShadowWaveId++,
+      x: state.player.x + 30,
+      y: 500,
+      vx: -230,
+      ttl: 2,
+      sourceIndex: 0,
+    });
+
+    state = step(
+      state,
+      { ...emptyInput(), dashPressed: true },
+      FIXED_DT,
+    );
+
+    expect(state.player.shadowWaveHitCount).toBe(0);
+    expect(state.player.dashTimer).toBeGreaterThan(0);
+    expect(state.shadowWaves).toHaveLength(1);
+  });
+
+  it("dispels a shadow wave at the earth-slam boundary", () => {
+    let state = createGame(92);
+    state.player.form = "mountain";
+    state.player.x = 900;
+    state.player.y = 430;
+    state.player.onGround = false;
+    state.shadowWaves.push({
+      id: state.nextShadowWaveId++,
+      x:
+        state.player.x +
+        EARTH_SLAM_SHOCKWAVE_RADIUS +
+        SHADOW_WAVE_WIDTH * 0.5,
+      y: 500,
+      vx: 0,
+      ttl: 2,
+      sourceIndex: 0,
+    });
+
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(state, emptyInput(), 8);
+
+    expect(state.player.earthSlamWaveDispelCount).toBe(1);
+    expect(state.shadowWaves).toEqual([]);
+  });
+
+  it("leaves a shadow wave active just outside the slam boundary", () => {
+    let state = createGame(93);
+    state.player.form = "mountain";
+    state.player.x = 900;
+    state.player.y = 430;
+    state.player.onGround = false;
+    state.shadowWaves.push({
+      id: state.nextShadowWaveId++,
+      x:
+        state.player.x +
+        EARTH_SLAM_SHOCKWAVE_RADIUS +
+        SHADOW_WAVE_WIDTH * 0.5 +
+        1,
+      y: 500,
+      vx: 0,
+      ttl: 2,
+      sourceIndex: 0,
+    });
+
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(state, emptyInput(), 8);
+
+    expect(state.player.earthSlamWaveDispelCount).toBe(0);
+    expect(state.shadowWaves).toHaveLength(1);
+  });
+
+  it("clears a sentry's active waves when Mountain defeats the source", () => {
+    let state = createGame(94);
+    const sentry = state.shadowSentries[0]!;
+    state.player.form = "mountain";
+    state.player.x =
+      sentry.x - SHADOW_SENTRY_WIDTH * 0.5 - PLAYER_HALF_WIDTH - 1;
+    state.player.y = sentry.y;
+    state.player.onGround = true;
+    state.shadowWaves.push({
+      id: state.nextShadowWaveId++,
+      x: sentry.x - 200,
+      y: sentry.y,
+      vx: -230,
+      ttl: 2,
+      sourceIndex: 0,
+    });
+
+    state = step(
+      state,
+      { ...emptyInput(), dashPressed: true },
+      FIXED_DT,
+    );
+
+    expect(sentry.defeated).toBe(true);
+    expect(state.shadowWaves).toEqual([]);
+  });
+
+  it("defeats a sentry only during the gada strike active window", () => {
+    let state = createGame(96);
+    const sentry = state.shadowSentries[0]!;
+    state.shadowSentries[1]!.defeated = true;
+    state.player.x =
+      sentry.x -
+      SHADOW_SENTRY_WIDTH * 0.5 -
+      GADA_STRIKE_REACH +
+      1;
+    state.player.y = sentry.y;
+    state.player.onGround = true;
+
+    state = step(
+      state,
+      { ...emptyInput(), attackPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.attackCount).toBe(1);
+    expect(sentry.defeated).toBe(false);
+
+    state = runTicks(state, emptyInput(), 3);
+    expect(sentry.defeated).toBe(false);
+    state = step(state, emptyInput(), FIXED_DT);
+    expect(sentry.defeated).toBe(true);
+    expect(state.player.gadaDefeatCount).toBe(1);
+  });
+
+  it("requires the gada strike to face its target", () => {
+    let state = createGame(97);
+    const sentry = state.shadowSentries[0]!;
+    state.shadowSentries[1]!.defeated = true;
+    state.player.facing = -1;
+    state.player.x =
+      sentry.x -
+      SHADOW_SENTRY_WIDTH * 0.5 -
+      GADA_STRIKE_REACH +
+      1;
+    state.player.y = sentry.y;
+    state.player.onGround = true;
+
+    state = step(
+      state,
+      { ...emptyInput(), attackPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(state, emptyInput(), 8);
+
+    expect(sentry.defeated).toBe(false);
+    expect(state.player.gadaDefeatCount).toBe(0);
+  });
+
+  it("keeps gada strikes from breaking stone or dispelling waves", () => {
+    let state = createGame(98);
+    const seal = state.seals[0]!;
+    state.player.x = seal.x - GADA_STRIKE_REACH + 1;
+    state.player.y = 500;
+    state.player.onGround = true;
+    state.shadowWaves.push({
+      id: state.nextShadowWaveId++,
+      x: state.player.x + GADA_STRIKE_REACH * 0.5,
+      y: 430,
+      vx: 0,
+      ttl: 2,
+      sourceIndex: 1,
+    });
+
+    state = step(
+      state,
+      { ...emptyInput(), attackPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(state, emptyInput(), 8);
+
+    expect(seal.broken).toBe(false);
+    expect(state.shadowWaves).toHaveLength(1);
+    expect(state.player.earthSlamWaveDispelCount).toBe(0);
+  });
+
+  it("does not restart a gada strike during recovery", () => {
+    let state = createGame(99);
+    state = step(
+      state,
+      { ...emptyInput(), attackPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(
+      state,
+      { ...emptyInput(), attackPressed: true },
+      8,
+    );
+
+    expect(state.player.attackCount).toBe(1);
+    expect(state.player.attackTimer).toBeGreaterThan(0);
+  });
+
+  it("locks dash and form power until the gada strike recovers", () => {
+    let state = createGame(107);
+    state = step(
+      state,
+      { ...emptyInput(), attackPressed: true },
+      FIXED_DT,
+    );
+    state = step(
+      state,
+      { ...emptyInput(), dashPressed: true, powerPressed: true },
+      FIXED_DT,
+    );
+
+    expect(state.player.attackTimer).toBeGreaterThan(0);
+    expect(state.player.dashCount).toBe(0);
+    expect(state.player.dashTimer).toBe(0);
+    expect(state.player.anchorUseCount).toBe(0);
+  });
+
+  it("gives a same-tick gada strike priority over a Wind vault", () => {
+    let state = createGame(108);
+    state = step(
+      state,
+      {
+        ...emptyInput(),
+        attackPressed: true,
+        powerPressed: true,
+      },
+      FIXED_DT,
+    );
+
+    expect(state.player.attackCount).toBe(1);
+    expect(state.player.anchorUseCount).toBe(0);
+    expect(state.player.attackTimer).toBeGreaterThan(0);
+  });
+
+  it("locks gada direction from windup through recovery", () => {
+    let state = createGame(109);
+    const sentry = state.shadowSentries[0]!;
+    state.shadowSentries[1]!.defeated = true;
+    state.player.x =
+      sentry.x +
+      SHADOW_SENTRY_WIDTH * 0.5 +
+      GADA_STRIKE_REACH -
+      1;
+    state.player.y = sentry.y;
+    state.player.onGround = true;
+    state.player.facing = 1;
+
+    state = step(
+      state,
+      { ...emptyInput(), attackPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(
+      state,
+      { ...emptyInput(), moveX: -1 },
+      8,
+    );
+
+    expect(state.player.attackFacing).toBe(1);
+    expect(state.player.facing).toBe(1);
+    expect(sentry.defeated).toBe(false);
+  });
+
+  it("activates a sentry at its exact range but not one step outside", () => {
+    const boundaryState = createGame(100);
+    const boundarySentry = boundaryState.shadowSentries[0]!;
+    boundaryState.shadowSentries[1]!.defeated = true;
+    boundaryState.started = true;
+    boundaryState.player.x =
+      boundarySentry.x - SHADOW_SENTRY_ACTIVATION_RANGE;
+    boundaryState.player.y = 400;
+    boundaryState.player.onGround = false;
+
+    step(boundaryState, emptyInput(), FIXED_DT);
+    expect(boundarySentry.telegraphTimer).toBe(
+      SHADOW_SENTRY_TELEGRAPH_TIME,
+    );
+
+    const outsideState = createGame(101);
+    const outsideSentry = outsideState.shadowSentries[0]!;
+    outsideState.shadowSentries[1]!.defeated = true;
+    outsideState.started = true;
+    outsideState.player.x =
+      outsideSentry.x - SHADOW_SENTRY_ACTIVATION_RANGE - 1;
+    outsideState.player.y = 400;
+    outsideState.player.onGround = false;
+
+    step(outsideState, emptyInput(), FIXED_DT);
+    expect(outsideSentry.telegraphTimer).toBe(0);
+  });
+
+  it("fires toward a player on the sentry's right and respects cooldown", () => {
+    let state = createGame(102);
+    const sentry = state.shadowSentries[0]!;
+    state.shadowSentries[1]!.defeated = true;
+    state.started = true;
+    state.player.x = sentry.x + 300;
+    state.player.y = 400;
+    state.player.onGround = false;
+
+    state = step(state, emptyInput(), FIXED_DT);
+    state = runTicks(
+      state,
+      emptyInput(),
+      Math.ceil(SHADOW_SENTRY_TELEGRAPH_TIME / FIXED_DT) + 1,
+    );
+
+    expect(state.shadowWaves).toHaveLength(1);
+    expect(state.shadowWaves[0]!.vx).toBeGreaterThan(0);
+    expect(sentry.cooldownTimer).toBeGreaterThan(0);
+    expect(sentry.cooldownTimer).toBeLessThanOrEqual(
+      SHADOW_SENTRY_PULSE_COOLDOWN,
+    );
+    expect(sentry.telegraphTimer).toBe(0);
+
+    state = step(state, emptyInput(), FIXED_DT);
+    expect(sentry.pulseCount).toBe(1);
+    expect(sentry.telegraphTimer).toBe(0);
+  });
+
+  it("removes shadow waves at their lifetime and world boundaries", () => {
+    let lifetimeState = createGame(103);
+    lifetimeState.started = true;
+    lifetimeState.player.y = 300;
+    lifetimeState.player.onGround = false;
+    lifetimeState.shadowWaves.push({
+      id: lifetimeState.nextShadowWaveId++,
+      x: 900,
+      y: 500,
+      vx: 0,
+      ttl: FIXED_DT,
+      sourceIndex: 0,
+    });
+
+    lifetimeState = step(lifetimeState, emptyInput(), FIXED_DT);
+    expect(lifetimeState.shadowWaves).toEqual([]);
+
+    let boundaryState = createGame(104);
+    boundaryState.started = true;
+    boundaryState.player.y = 300;
+    boundaryState.player.onGround = false;
+    boundaryState.shadowWaves.push({
+      id: boundaryState.nextShadowWaveId++,
+      x: boundaryState.worldWidth - 1,
+      y: 500,
+      vx: 230,
+      ttl: SHADOW_WAVE_LIFETIME,
+      sourceIndex: 0,
+    });
+
+    boundaryState = step(boundaryState, emptyInput(), FIXED_DT);
+    expect(boundaryState.shadowWaves).toEqual([]);
+  });
+
+  it("clears every active wave on a checkpoint hit and on victory", () => {
+    let hitState = createGame(105);
+    hitState.started = true;
+    hitState.checkpoint = { x: 500, y: 382 };
+    hitState.player.x = 900;
+    hitState.player.y = 500;
+    hitState.shadowWaves.push(
+      {
+        id: hitState.nextShadowWaveId++,
+        x: 910,
+        y: 500,
+        vx: -230,
+        ttl: 2,
+        sourceIndex: 0,
+      },
+      {
+        id: hitState.nextShadowWaveId++,
+        x: 1200,
+        y: 500,
+        vx: -230,
+        ttl: 2,
+        sourceIndex: 1,
+      },
+    );
+
+    hitState = step(hitState, emptyInput(), FIXED_DT);
+    expect(hitState.player.shadowWaveHitCount).toBe(1);
+    expect(hitState.shadowWaves).toEqual([]);
+
+    let winState = createGame(106);
+    winState.started = true;
+    for (const sigil of winState.sigils) sigil.collected = true;
+    for (const sentry of winState.shadowSentries) sentry.defeated = true;
+    winState.player.x = winState.finish.x;
+    winState.player.y = winState.finish.y;
+    winState.shadowWaves.push({
+      id: winState.nextShadowWaveId++,
+      x: 900,
+      y: 500,
+      vx: 0,
+      ttl: 2,
+      sourceIndex: 0,
+    });
+
+    winState = step(winState, emptyInput(), FIXED_DT);
+    expect(winState.status).toBe("won");
+    expect(winState.shadowWaves).toEqual([]);
   });
 });

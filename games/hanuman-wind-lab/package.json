@@ -13,6 +13,7 @@
     "test:e2e": "playwright test",
     "validate:content": "tsx tools/validate-content.ts",
     "playtest": "tsx tools/bots/run.ts",
+    "soak": "tsx tools/soak.ts",
     "replay": "tsx tools/replay.ts"
   },
   "dependencies": {

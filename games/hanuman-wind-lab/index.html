@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hanuman Wind Lab</title>
+    <title>Hanuman: Leap to Lanka</title>
     <style>
       html, body {
         margin: 0;
@@ -19,11 +19,41 @@
         display: grid;
         place-items: center;
       }
+      #game:focus-visible {
+        outline: 3px solid #ffe38b;
+        outline-offset: -6px;
+      }
       canvas { box-shadow: 0 0 90px #020912; }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
     </style>
   </head>
   <body>
-    <div id="game"></div>
+    <main>
+      <h1 class="sr-only">Hanuman: Leap to Lanka</h1>
+      <p id="game-objective" class="sr-only">
+        Collect seven wind sigils, defeat both shadow sentries, and reach the
+        golden shrine. Move with A and D, jump with Space, dash with Shift,
+        attack with left click or J, change form with E, use form power with Q,
+        pause with Escape, and restart with R.
+      </p>
+      <div
+        id="game"
+        role="application"
+        tabindex="0"
+        aria-label="Hanuman: Leap to Lanka playable game"
+        aria-describedby="game-objective"
+      ></div>
+    </main>
     <script type="module" src="/src/view/main.ts"></script>
   </body>
 </html>

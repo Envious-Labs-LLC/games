@@ -9,6 +9,20 @@ export const EARTH_SLAM_SHOCKWAVE_RADIUS =
   movement.mountainForm.earthSlam.shockwaveRadius;
 export const SHADOW_SENTRY_WIDTH = movement.shadowSentry.width;
 export const SHADOW_SENTRY_HEIGHT = movement.shadowSentry.height;
+export const SHADOW_SENTRY_TELEGRAPH_TIME =
+  movement.shadowSentry.telegraphTime;
+export const SHADOW_SENTRY_ACTIVATION_RANGE =
+  movement.shadowSentry.activationRange;
+export const SHADOW_SENTRY_PULSE_COOLDOWN =
+  movement.shadowSentry.pulseCooldown;
+export const SHADOW_WAVE_WIDTH = movement.shadowSentry.waveWidth;
+export const SHADOW_WAVE_HEIGHT = movement.shadowSentry.waveHeight;
+export const SHADOW_WAVE_LIFETIME = movement.shadowSentry.waveLifetime;
+export const GADA_STRIKE_REACH = movement.gadaStrike.reach;
+export const GADA_STRIKE_TOTAL_TIME =
+  movement.gadaStrike.windupTime +
+  movement.gadaStrike.activeTime +
+  movement.gadaStrike.recoveryTime;
 
 export type GameStatus = "playing" | "won";
 export type PlayerForm = "wind" | "mountain";
@@ -24,7 +38,10 @@ export type BurstKind =
   | "slam"
   | "shockwave"
   | "defeat"
-  | "hit";
+  | "hit"
+  | "pulse"
+  | "dispel"
+  | "strike";
 
 export interface Input {
   moveX: -1 | 0 | 1;
@@ -33,6 +50,7 @@ export interface Input {
   dashPressed: boolean;
   formPressed: boolean;
   powerPressed: boolean;
+  attackPressed: boolean;
   restart: boolean;
 }
 
@@ -62,6 +80,18 @@ export interface ShadowSentry {
   x: number;
   y: number;
   defeated: boolean;
+  telegraphTimer: number;
+  cooldownTimer: number;
+  pulseCount: number;
+}
+
+export interface ShadowWave {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  ttl: number;
+  sourceIndex: number;
 }
 
 export interface Burst {
@@ -100,6 +130,12 @@ export interface Player {
   earthSlamSentryDefeatCount: number;
   sentryDashDefeatCount: number;
   sentryHitCount: number;
+  shadowWaveHitCount: number;
+  earthSlamWaveDispelCount: number;
+  attackTimer: number;
+  attackFacing: -1 | 1;
+  attackCount: number;
+  gadaDefeatCount: number;
 }
 
 export interface GameState {
@@ -117,6 +153,8 @@ export interface GameState {
   seals: Seal[];
   windAnchors: WindAnchor[];
   shadowSentries: ShadowSentry[];
+  shadowWaves: ShadowWave[];
+  nextShadowWaveId: number;
   finish: { x: number; y: number };
   checkpoint: { x: number; y: number };
   falls: number;
@@ -133,6 +171,7 @@ export function emptyInput(): Input {
     dashPressed: false,
     formPressed: false,
     powerPressed: false,
+    attackPressed: false,
     restart: false,
   };
 }
@@ -174,6 +213,12 @@ export function createGame(seed: number): GameState {
       earthSlamSentryDefeatCount: 0,
       sentryDashDefeatCount: 0,
       sentryHitCount: 0,
+      shadowWaveHitCount: 0,
+      earthSlamWaveDispelCount: 0,
+      attackTimer: 0,
+      attackFacing: 1,
+      attackCount: 0,
+      gadaDefeatCount: 0,
     },
     platforms: course.platforms.map((platform) => ({ ...platform })),
     sigils: course.sigils.map((sigil) => ({ ...sigil, collected: false })),
@@ -182,7 +227,12 @@ export function createGame(seed: number): GameState {
     shadowSentries: course.shadowSentries.map((sentry) => ({
       ...sentry,
       defeated: false,
+      telegraphTimer: 0,
+      cooldownTimer: 0,
+      pulseCount: 0,
     })),
+    shadowWaves: [],
+    nextShadowWaveId: 1,
     finish: { ...course.finish },
     checkpoint: { x: 110, y: 500 },
     falls: 0,
@@ -208,21 +258,28 @@ export function step(state: GameState, input: Input, dt: number): GameState {
     input.jumpHeld ||
     input.dashPressed ||
     input.formPressed ||
-    input.powerPressed;
+    input.powerPressed ||
+    input.attackPressed;
   if (!state.started && !isAction) return state;
   state.started = true;
   state.elapsed += dt;
 
   updatePlayer(state, input, dt);
+  resolveGadaStrike(state);
+  updateShadowSentries(state, dt);
+  updateShadowWaves(state, dt);
+  state.player.dashTimer = Math.max(0, state.player.dashTimer - dt);
+  state.player.attackTimer = Math.max(0, state.player.attackTimer - dt);
   collectSigils(state);
 
   if (
-    state.sigils.every((sigil) => sigil.collected) &&
+    isFinishReady(state) &&
     !state.player.earthSlamming &&
     state.player.x >= state.finish.x - 58
   ) {
     state.status = "won";
     state.statusTimer = 0;
+    state.shadowWaves = [];
     addBurst(state, "sigil", state.finish.x, state.finish.y - 70, 1);
   }
 
@@ -231,14 +288,36 @@ export function step(state: GameState, input: Input, dt: number): GameState {
 
 function updatePlayer(state: GameState, input: Input, dt: number): void {
   const player = state.player;
-  const powerForm =
-    !input.formPressed && !player.earthSlamming ? player.form : null;
-  if (input.moveX !== 0 && !player.earthSlamming) {
+  const attackLocked = player.attackTimer > 0;
+  if (input.moveX !== 0 && !player.earthSlamming && !attackLocked) {
     player.facing = input.moveX;
   }
   player.anchorCooldown = Math.max(0, player.anchorCooldown - dt);
 
-  if (input.formPressed && !player.earthSlamming) {
+  const startedStrike =
+    input.attackPressed &&
+    !player.earthSlamming &&
+    !attackLocked &&
+    player.dashTimer === 0;
+  if (startedStrike) {
+    player.attackTimer = GADA_STRIKE_TOTAL_TIME;
+    player.attackFacing = player.facing;
+    player.attackCount += 1;
+    addBurst(
+      state,
+      "strike",
+      player.x + player.attackFacing * GADA_STRIKE_REACH * 0.55,
+      player.y - PLAYER_HEIGHT * 0.55,
+      player.attackFacing,
+    );
+  }
+
+  if (
+    input.formPressed &&
+    !player.earthSlamming &&
+    !attackLocked &&
+    !startedStrike
+  ) {
     player.form = player.form === "wind" ? "mountain" : "wind";
     player.formShiftCount += 1;
     player.gliding = false;
@@ -251,6 +330,13 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
   if (player.onGround) player.coyoteTimer = movement.coyoteTime;
   else player.coyoteTimer = Math.max(0, player.coyoteTimer - dt);
 
+  const powerForm =
+    !input.formPressed &&
+    !player.earthSlamming &&
+    !attackLocked &&
+    !startedStrike
+      ? player.form
+      : null;
   const powered =
     input.powerPressed &&
     (powerForm === "wind"
@@ -258,10 +344,11 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
       : powerForm === "mountain"
         ? tryEarthSlam(state)
         : false);
-
   if (
     !powered &&
+    !startedStrike &&
     !player.earthSlamming &&
+    player.attackTimer === 0 &&
     input.dashPressed &&
     player.dashAvailable &&
     player.dashTimer === 0
@@ -279,6 +366,7 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
   if (
     !powered &&
     !player.earthSlamming &&
+    player.attackTimer === 0 &&
     player.jumpBufferTimer > 0 &&
     (canGroundJump || player.wallSide !== 0)
   ) {
@@ -350,7 +438,6 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
 
   const mountainDashing = player.form === "mountain" && player.dashTimer > 0;
   moveAndCollide(state, dt, mountainDashing);
-  player.dashTimer = Math.max(0, player.dashTimer - dt);
 
   if (player.y > state.worldHeight) {
     state.falls += 1;
@@ -479,6 +566,7 @@ function moveAndCollide(
         player.earthSlamImpactCount += 1;
         player.earthSlamSealBreakCount += breakSealsFromEarthSlam(state);
         player.earthSlamSentryDefeatCount += defeatSentriesFromEarthSlam(state);
+        player.earthSlamWaveDispelCount += dispelWavesFromEarthSlam(state);
         addBurst(state, "shockwave", player.x, player.y, player.facing);
       } else {
         addBurst(state, "land", player.x, player.y, player.facing);
@@ -614,7 +702,8 @@ function breakSealsFromEarthSlam(state: GameState): number {
 
 function defeatSentriesFromEarthSlam(state: GameState): number {
   let defeatedCount = 0;
-  for (const sentry of state.shadowSentries) {
+  for (let index = 0; index < state.shadowSentries.length; index += 1) {
+    const sentry = state.shadowSentries[index]!;
     if (
       sentry.defeated ||
       distanceSquaredToSentry(state.player.x, state.player.y, sentry) >
@@ -622,8 +711,28 @@ function defeatSentriesFromEarthSlam(state: GameState): number {
     ) {
       continue;
     }
-    sentry.defeated = true;
+    defeatShadowSentry(state, sentry, index);
     defeatedCount += 1;
+    addBurst(
+      state,
+      "defeat",
+      sentry.x,
+      sentry.y - SHADOW_SENTRY_HEIGHT * 0.5,
+      state.player.attackFacing,
+    );
+  }
+  return defeatedCount;
+}
+
+function resolveGadaStrike(state: GameState): void {
+  if (!isGadaStrikeActive(state.player)) return;
+  for (let index = 0; index < state.shadowSentries.length; index += 1) {
+    const sentry = state.shadowSentries[index]!;
+    if (sentry.defeated || !gadaStrikeOverlapsSentry(state.player, sentry)) {
+      continue;
+    }
+    defeatShadowSentry(state, sentry, index);
+    state.player.gadaDefeatCount += 1;
     addBurst(
       state,
       "defeat",
@@ -632,7 +741,38 @@ function defeatSentriesFromEarthSlam(state: GameState): number {
       state.player.facing,
     );
   }
-  return defeatedCount;
+}
+
+export function isGadaStrikeActive(player: Player): boolean {
+  const elapsed = GADA_STRIKE_TOTAL_TIME - player.attackTimer;
+  return (
+    player.attackTimer > 0 &&
+    elapsed >= movement.gadaStrike.windupTime &&
+    elapsed <
+      movement.gadaStrike.windupTime + movement.gadaStrike.activeTime
+  );
+}
+
+function gadaStrikeOverlapsSentry(
+  player: Player,
+  sentry: ShadowSentry,
+): boolean {
+  const strikeLeft =
+    player.attackFacing === 1 ? player.x : player.x - GADA_STRIKE_REACH;
+  const strikeRight =
+    player.attackFacing === 1 ? player.x + GADA_STRIKE_REACH : player.x;
+  const strikeCenterY = player.y - PLAYER_HEIGHT * 0.5;
+  const strikeTop = strikeCenterY - movement.gadaStrike.height * 0.5;
+  const strikeBottom = strikeCenterY + movement.gadaStrike.height * 0.5;
+  const sentryLeft = sentry.x - SHADOW_SENTRY_WIDTH * 0.5;
+  const sentryRight = sentry.x + SHADOW_SENTRY_WIDTH * 0.5;
+  const sentryTop = sentry.y - SHADOW_SENTRY_HEIGHT;
+  return (
+    strikeRight > sentryLeft &&
+    strikeLeft < sentryRight &&
+    strikeBottom > sentryTop &&
+    strikeTop < sentry.y
+  );
 }
 
 function resolveShadowSentryContacts(
@@ -641,13 +781,14 @@ function resolveShadowSentryContacts(
   mountainDashing: boolean,
 ): void {
   const player = state.player;
-  for (const sentry of state.shadowSentries) {
+  for (let index = 0; index < state.shadowSentries.length; index += 1) {
+    const sentry = state.shadowSentries[index]!;
     if (sentry.defeated || !playerOverlapsSentry(player, previousX, sentry)) {
       continue;
     }
 
     if (mountainDashing) {
-      sentry.defeated = true;
+      defeatShadowSentry(state, sentry, index);
       player.sentryDashDefeatCount += 1;
       addBurst(
         state,
@@ -670,6 +811,158 @@ function resolveShadowSentryContacts(
     resetPlayerToCheckpoint(state);
     return;
   }
+}
+
+function updateShadowSentries(state: GameState, dt: number): void {
+  for (let index = 0; index < state.shadowSentries.length; index += 1) {
+    const sentry = state.shadowSentries[index]!;
+    if (sentry.defeated) continue;
+
+    if (sentry.telegraphTimer > 0) {
+      sentry.telegraphTimer = Math.max(0, sentry.telegraphTimer - dt);
+      if (sentry.telegraphTimer === 0) {
+        fireShadowWave(state, sentry, index);
+        sentry.cooldownTimer = movement.shadowSentry.pulseCooldown;
+      }
+      continue;
+    }
+
+    sentry.cooldownTimer = Math.max(0, sentry.cooldownTimer - dt);
+    if (
+      sentry.cooldownTimer === 0 &&
+      Math.abs(state.player.x - sentry.x) <=
+        movement.shadowSentry.activationRange
+    ) {
+      sentry.telegraphTimer = movement.shadowSentry.telegraphTime;
+    }
+  }
+}
+
+function fireShadowWave(
+  state: GameState,
+  sentry: ShadowSentry,
+  sourceIndex: number,
+): void {
+  const direction: -1 | 1 = state.player.x < sentry.x ? -1 : 1;
+  sentry.pulseCount += 1;
+  state.shadowWaves.push({
+    id: state.nextShadowWaveId++,
+    x:
+      sentry.x +
+      direction * (SHADOW_SENTRY_WIDTH * 0.5 + SHADOW_WAVE_WIDTH * 0.5),
+    y: sentry.y,
+    vx: direction * movement.shadowSentry.waveSpeed,
+    ttl: movement.shadowSentry.waveLifetime,
+    sourceIndex,
+  });
+  addBurst(
+    state,
+    "pulse",
+    sentry.x,
+    sentry.y - SHADOW_SENTRY_HEIGHT * 0.45,
+    direction,
+  );
+}
+
+function updateShadowWaves(state: GameState, dt: number): void {
+  let hitWaveId: number | null = null;
+  for (const wave of state.shadowWaves) {
+    const previousX = wave.x;
+    wave.x += wave.vx * dt;
+    wave.ttl -= dt;
+    if (wave.ttl <= 0 || wave.x < 0 || wave.x > state.worldWidth) continue;
+
+    const mountainDashing =
+      state.player.form === "mountain" && state.player.dashTimer > 0;
+    if (
+      !mountainDashing &&
+      playerOverlapsShadowWave(state.player, previousX, wave)
+    ) {
+      hitWaveId = wave.id;
+      state.player.shadowWaveHitCount += 1;
+      addBurst(
+        state,
+        "hit",
+        state.player.x,
+        state.player.y - PLAYER_HEIGHT * 0.5,
+        state.player.facing,
+      );
+      resetPlayerToCheckpoint(state);
+      break;
+    }
+  }
+  state.shadowWaves = state.shadowWaves.filter(
+    (wave) =>
+      wave.id !== hitWaveId &&
+      wave.ttl > 0 &&
+      wave.x >= 0 &&
+      wave.x <= state.worldWidth,
+  );
+}
+
+function playerOverlapsShadowWave(
+  player: Player,
+  previousWaveX: number,
+  wave: ShadowWave,
+): boolean {
+  const sweptLeft =
+    Math.min(previousWaveX, wave.x) - SHADOW_WAVE_WIDTH * 0.5;
+  const sweptRight =
+    Math.max(previousWaveX, wave.x) + SHADOW_WAVE_WIDTH * 0.5;
+  const verticalOverlap =
+    player.y > wave.y - SHADOW_WAVE_HEIGHT &&
+    player.y - PLAYER_HEIGHT < wave.y;
+  return (
+    player.x + PLAYER_HALF_WIDTH > sweptLeft &&
+    player.x - PLAYER_HALF_WIDTH < sweptRight &&
+    verticalOverlap
+  );
+}
+
+function dispelWavesFromEarthSlam(state: GameState): number {
+  const impactX = state.player.x;
+  const impactY = state.player.y;
+  const radiusSquared =
+    EARTH_SLAM_SHOCKWAVE_RADIUS * EARTH_SLAM_SHOCKWAVE_RADIUS;
+  const remaining: ShadowWave[] = [];
+  let dispelledCount = 0;
+
+  for (const wave of state.shadowWaves) {
+    const closestX = clamp(
+      impactX,
+      wave.x - SHADOW_WAVE_WIDTH * 0.5,
+      wave.x + SHADOW_WAVE_WIDTH * 0.5,
+    );
+    const closestY = clamp(
+      impactY,
+      wave.y - SHADOW_WAVE_HEIGHT,
+      wave.y,
+    );
+    const dx = impactX - closestX;
+    const dy = impactY - closestY;
+    if (dx * dx + dy * dy > radiusSquared) {
+      remaining.push(wave);
+      continue;
+    }
+    dispelledCount += 1;
+    addBurst(state, "dispel", wave.x, wave.y - SHADOW_WAVE_HEIGHT * 0.5, state.player.facing);
+  }
+
+  state.shadowWaves = remaining;
+  return dispelledCount;
+}
+
+function defeatShadowSentry(
+  state: GameState,
+  sentry: ShadowSentry,
+  sentryIndex: number,
+): void {
+  sentry.defeated = true;
+  sentry.telegraphTimer = 0;
+  sentry.cooldownTimer = 0;
+  state.shadowWaves = state.shadowWaves.filter(
+    (wave) => wave.sourceIndex !== sentryIndex,
+  );
 }
 
 function playerOverlapsSentry(
@@ -719,6 +1012,15 @@ function resetPlayerToCheckpoint(state: GameState): void {
   player.jumpBufferTimer = 0;
   player.jumpHoldTimer = 0;
   player.coyoteTimer = 0;
+  player.attackTimer = 0;
+  state.shadowWaves = [];
+}
+
+export function isFinishReady(state: GameState): boolean {
+  return (
+    state.sigils.every((sigil) => sigil.collected) &&
+    state.shadowSentries.every((sentry) => sentry.defeated)
+  );
 }
 
 export function findUsableWindAnchorIndex(state: GameState): number | null {
