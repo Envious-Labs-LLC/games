@@ -16,7 +16,7 @@ test("game boots, moves, and attacks without browser errors", async ({ page }) =
   await page.keyboard.up("d");
   await expect.poll(() => page.evaluate(() => window.__LANKA_STATE__.player.x)).toBeGreaterThan(startX);
 
-  await page.keyboard.press("j");
+  await page.mouse.click(480, 270);
   await expect.poll(() => page.evaluate(() => window.__LANKA_STATE__.player.attackSerial)).toBe(1);
   expect(errors).toEqual([]);
 });

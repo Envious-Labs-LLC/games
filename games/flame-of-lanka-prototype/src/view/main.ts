@@ -8,6 +8,11 @@ import {
   type GameState,
   type Input,
 } from "../sim/index";
+import {
+  bufferInput,
+  consumeBufferedInput,
+  createInputBuffer,
+} from "../platform/inputBuffer";
 
 declare global {
   interface Window {
@@ -28,6 +33,7 @@ class GameScene extends Phaser.Scene {
   private statusText!: Phaser.GameObjects.Text;
   private hintText!: Phaser.GameObjects.Text;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
+  private bufferedInput = createInputBuffer();
   private accumulator = 0;
   private cameraX = 0;
 
@@ -72,7 +78,7 @@ class GameScene extends Phaser.Scene {
       .setDepth(11);
 
     this.hintText = this.add
-      .text(WIDTH / 2, HEIGHT - 23, "MOVE  A D / ← →    JUMP  W / SPACE    LIGHT  J    HEAVY  K", {
+      .text(WIDTH / 2, HEIGHT - 23, "MOVE  A / D    JUMP  SPACE    LIGHT  LEFT CLICK    HEAVY  RIGHT CLICK", {
         fontFamily: "Arial, sans-serif",
         fontSize: "13px",
         color: "#e8cba2",
@@ -87,24 +93,22 @@ class GameScene extends Phaser.Scene {
       right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
       a: Phaser.Input.Keyboard.KeyCodes.A,
       d: Phaser.Input.Keyboard.KeyCodes.D,
-      up: Phaser.Input.Keyboard.KeyCodes.UP,
-      w: Phaser.Input.Keyboard.KeyCodes.W,
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      j: Phaser.Input.Keyboard.KeyCodes.J,
-      k: Phaser.Input.Keyboard.KeyCodes.K,
       r: Phaser.Input.Keyboard.KeyCodes.R,
     }) as Record<string, Phaser.Input.Keyboard.Key>;
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+      if (pointer.leftButtonDown()) this.bufferedInput.light = true;
+      if (pointer.rightButtonDown()) this.bufferedInput.heavy = true;
+    });
 
     this.draw();
   }
 
   override update(_time: number, deltaMs: number): void {
-    const input = this.readInput();
+    this.bufferedInput = bufferInput(this.bufferedInput, this.readInput());
     this.accumulator += Math.min(deltaMs, 50) / 1000;
-    let firstStep = true;
     while (this.accumulator >= FIXED_DT) {
-      this.state = step(this.state, firstStep ? input : heldOnly(input), FIXED_DT);
-      firstStep = false;
+      this.state = step(this.state, consumeBufferedInput(this.bufferedInput), FIXED_DT);
       this.accumulator -= FIXED_DT;
     }
     window.__LANKA_STATE__ = this.state;
@@ -119,12 +123,7 @@ class GameScene extends Phaser.Scene {
     const right = this.keys.right!.isDown || this.keys.d!.isDown;
     const input = emptyInput();
     input.moveX = left === right ? 0 : left ? -1 : 1;
-    input.jump =
-      Phaser.Input.Keyboard.JustDown(this.keys.up!) ||
-      Phaser.Input.Keyboard.JustDown(this.keys.w!) ||
-      Phaser.Input.Keyboard.JustDown(this.keys.space!);
-    input.light = Phaser.Input.Keyboard.JustDown(this.keys.j!);
-    input.heavy = Phaser.Input.Keyboard.JustDown(this.keys.k!);
+    input.jump = Phaser.Input.Keyboard.JustDown(this.keys.space!);
     input.restart = Phaser.Input.Keyboard.JustDown(this.keys.r!);
     return input;
   }
@@ -327,10 +326,6 @@ class GameScene extends Phaser.Scene {
   }
 }
 
-function heldOnly(input: Input): Input {
-  return { moveX: input.moveX, jump: false, light: false, heavy: false, restart: false };
-}
-
 function drawHero(
   g: Phaser.GameObjects.Graphics,
   x: number,
@@ -492,6 +487,7 @@ new Phaser.Game({
   height: HEIGHT,
   backgroundColor: "#070a10",
   render: { antialias: true, pixelArt: false },
+  disableContextMenu: true,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

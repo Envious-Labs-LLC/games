@@ -14,10 +14,10 @@ Open the local address shown in the terminal.
 
 ## Controls
 
-- Move: A/D or left/right arrows
-- Jump: W, up arrow, or Space
-- Light attack: J
-- Heavy attack: K
+- Move: A/D (left/right arrows also work)
+- Jump: Space
+- Light attack: left click
+- Heavy attack: right click
 - Restart after victory or defeat: R
 
 ## Proof
