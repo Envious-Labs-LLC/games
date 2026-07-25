@@ -40,10 +40,43 @@ const hanumanWindUrl = new URL(
   "../../assets/source/characters/hanuman-wind.png",
   import.meta.url,
 ).href;
+const hanumanRunAUrl = new URL(
+  "../../assets/source/characters/hanuman-run-a.png",
+  import.meta.url,
+).href;
+const hanumanRunMidUrl = new URL(
+  "../../assets/source/characters/hanuman-run-mid.png",
+  import.meta.url,
+).href;
+const hanumanRunBUrl = new URL(
+  "../../assets/source/characters/hanuman-run-b.png",
+  import.meta.url,
+).href;
+const hanumanAirUrl = new URL(
+  "../../assets/source/characters/hanuman-air.png",
+  import.meta.url,
+).href;
+const hanumanAttackWindupUrl = new URL(
+  "../../assets/source/characters/hanuman-attack-windup.png",
+  import.meta.url,
+).href;
+const hanumanAttackImpactUrl = new URL(
+  "../../assets/source/characters/hanuman-attack-impact.png",
+  import.meta.url,
+).href;
 const replayContentFingerprint = JSON.stringify({
   movement: movementContent,
   course: courseContent,
 });
+
+type HeroPose =
+  | "idle"
+  | "run-a"
+  | "run-mid"
+  | "run-b"
+  | "air"
+  | "attack-windup"
+  | "attack-impact";
 
 declare global {
   interface Window {
@@ -59,6 +92,10 @@ declare global {
       finalStateJson: string;
     };
     __WIND_EXPORT_CAPTURE__: () => string;
+    __WIND_HERO_POSE__: HeroPose;
+    __WIND_HERO_POSE_HISTORY__: HeroPose[];
+    __WIND_HERO_TEXTURE__: string;
+    __WIND_HERO_TEXTURE_HISTORY__: string[];
   }
 }
 
@@ -96,6 +133,12 @@ class WindScene extends Phaser.Scene {
   preload(): void {
     this.load.image("leap-to-lanka-night", mythicBackgroundUrl);
     this.load.image("hanuman-wind", hanumanWindUrl);
+    this.load.image("hanuman-run-a", hanumanRunAUrl);
+    this.load.image("hanuman-run-mid", hanumanRunMidUrl);
+    this.load.image("hanuman-run-b", hanumanRunBUrl);
+    this.load.image("hanuman-air", hanumanAirUrl);
+    this.load.image("hanuman-attack-windup", hanumanAttackWindupUrl);
+    this.load.image("hanuman-attack-impact", hanumanAttackImpactUrl);
   }
 
   create(): void {
@@ -115,6 +158,10 @@ class WindScene extends Phaser.Scene {
     };
     window.__WIND_EXPORT_CAPTURE__ = () =>
       JSON.stringify(window.__WIND_CAPTURE__, null, 2);
+    window.__WIND_HERO_POSE__ = "idle";
+    window.__WIND_HERO_POSE_HISTORY__ = ["idle"];
+    window.__WIND_HERO_TEXTURE__ = "hanuman-wind";
+    window.__WIND_HERO_TEXTURE_HISTORY__ = ["hanuman-wind"];
 
     this.backgroundImage = this.add
       .image(WIDTH / 2, HEIGHT / 2, "leap-to-lanka-night")
@@ -475,31 +522,51 @@ class WindScene extends Phaser.Scene {
       player.attackTimer > 0
         ? 1 - player.attackTimer / GADA_STRIKE_TOTAL_TIME
         : 0;
-    const attackLean =
-      player.attackTimer > 0
-        ? Math.sin(attackProgress * Math.PI) *
-          player.attackFacing *
-          0.16
-        : 0;
+    let heroPose = selectHeroPose(player, attackProgress);
+    let textureKey = `hanuman-${heroPose === "idle" ? "wind" : heroPose}`;
+    if (!this.textures.exists(textureKey)) {
+      heroPose = "idle";
+      textureKey = "hanuman-wind";
+    }
     const motionLean = player.earthSlamming
-      ? 0
+      ? player.facing * 0.34
       : player.dashTimer > 0
         ? player.facing * 0.13
-        : Phaser.Math.Clamp(player.vx / 1700, -0.08, 0.08);
+        : isRunPose(heroPose)
+          ? Phaser.Math.Clamp(player.vx / 2600, -0.045, 0.045)
+          : 0;
     const lift = player.earthSlamming ? 10 : player.gliding ? -8 : 0;
     const formScale = player.form === "mountain" ? 1.1 : 1;
+    const poseOrigin = heroPoseOrigin(heroPose);
+    const runBob =
+      !this.reducedMotion && isRunPose(heroPose)
+        ? Math.sin((player.x / 28) * Math.PI) * 2
+        : 0;
+    const attackKick =
+      heroPose === "attack-impact" ? player.attackFacing * 4 : 0;
+    const attackStretch = heroPose === "attack-impact" ? 1.04 : 1;
     this.heroImage
-      .setPosition(x, y + lift + 3)
+      .setTexture(textureKey)
+      .setOrigin(poseOrigin.x, poseOrigin.y)
+      .setPosition(x + attackKick, y + lift + runBob + 3)
       .setFlipX(
         (player.attackTimer > 0 ? player.attackFacing : player.facing) < 0,
       )
-      .setRotation(motionLean + attackLean)
-      .setScale((150 / 1536) * formScale, (100 / 1024) * formScale)
+      .setRotation(motionLean)
+      .setScale(
+        (168 / 1536) * formScale * attackStretch,
+        (112 / 1024) * formScale,
+      )
       .setTint(player.form === "mountain" ? 0xffd19a : 0xffffff)
       .setAlpha(player.dashTimer > 0 ? 0.9 : 1)
       .setVisible(
         x > -180 && x < WIDTH + 180 && y > -130 && y < HEIGHT + 130,
       );
+    if (this.heroImage.texture.key !== textureKey) {
+      heroPose = "idle";
+      this.heroImage.setTexture("hanuman-wind").setOrigin(0.46, 0.94);
+    }
+    recordDisplayedHeroPose(heroPose, this.heroImage.texture.key);
 
     if (player.form === "mountain") {
       g.lineStyle(4, 0xffb655, 0.38);
@@ -658,6 +725,72 @@ class WindScene extends Phaser.Scene {
     if (this.state.status === "won") {
       g.fillStyle(0x03101a, 0.7);
       g.fillRect(0, 0, WIDTH, HEIGHT);
+    }
+  }
+}
+
+function selectHeroPose(
+  player: GameState["player"],
+  attackProgress: number,
+): HeroPose {
+  if (player.attackTimer > 0) {
+    const windupShare =
+      movementContent.gadaStrike.windupTime / GADA_STRIKE_TOTAL_TIME;
+    return attackProgress < windupShare
+      ? "attack-windup"
+      : "attack-impact";
+  }
+  if (
+    player.earthSlamming ||
+    player.dashTimer > 0 ||
+    !player.onGround
+  ) {
+    return "air";
+  }
+  if (Math.abs(player.vx) > 35) {
+    const runPoses: HeroPose[] = ["run-a", "run-mid", "run-b"];
+    return runPoses[
+      Math.floor(Math.abs(player.x) / 28) % runPoses.length
+    ]!;
+  }
+  return "idle";
+}
+
+function isRunPose(pose: HeroPose): boolean {
+  return pose === "run-a" || pose === "run-mid" || pose === "run-b";
+}
+
+function heroPoseOrigin(pose: HeroPose): { x: number; y: number } {
+  switch (pose) {
+    case "idle":
+      return { x: 0.46, y: 0.94 };
+    case "run-a":
+    case "run-b":
+      return { x: 0.5, y: 0.9 };
+    case "run-mid":
+      return { x: 0.5, y: 0.92 };
+    case "air":
+      return { x: 0.5, y: 0.88 };
+    case "attack-windup":
+      return { x: 0.5, y: 0.93 };
+    case "attack-impact":
+      return { x: 0.43, y: 0.91 };
+  }
+}
+
+function recordDisplayedHeroPose(pose: HeroPose, textureKey: string): void {
+  if (window.__WIND_HERO_POSE__ !== pose) {
+    window.__WIND_HERO_POSE__ = pose;
+    window.__WIND_HERO_POSE_HISTORY__.push(pose);
+    if (window.__WIND_HERO_POSE_HISTORY__.length > 24) {
+      window.__WIND_HERO_POSE_HISTORY__.shift();
+    }
+  }
+  if (window.__WIND_HERO_TEXTURE__ !== textureKey) {
+    window.__WIND_HERO_TEXTURE__ = textureKey;
+    window.__WIND_HERO_TEXTURE_HISTORY__.push(textureKey);
+    if (window.__WIND_HERO_TEXTURE_HISTORY__.length > 24) {
+      window.__WIND_HERO_TEXTURE_HISTORY__.shift();
     }
   }
 }

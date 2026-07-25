@@ -70,8 +70,21 @@ const requiredAssetFiles = [
   "source/backgrounds/leap-to-lanka-night.png",
   "source/characters/hanuman-wind-chroma.png",
   "source/characters/hanuman-wind.png",
+  "source/characters/hanuman-run-a-chroma.png",
+  "source/characters/hanuman-run-a.png",
+  "source/characters/hanuman-run-mid-chroma.png",
+  "source/characters/hanuman-run-mid.png",
+  "source/characters/hanuman-run-b-chroma.png",
+  "source/characters/hanuman-run-b.png",
+  "source/characters/hanuman-air-chroma.png",
+  "source/characters/hanuman-air.png",
+  "source/characters/hanuman-attack-windup-chroma.png",
+  "source/characters/hanuman-attack-windup.png",
+  "source/characters/hanuman-attack-impact-chroma.png",
+  "source/characters/hanuman-attack-impact.png",
   "source/prompts/leap-to-lanka-night.md",
   "source/prompts/hanuman-wind.md",
+  "source/prompts/hanuman-animation-poses.md",
 ];
 let assetBytes = 0;
 for (const relativePath of requiredAssetFiles) {
@@ -79,7 +92,11 @@ for (const relativePath of requiredAssetFiles) {
   assertContent(existsSync(filePath), `required asset is missing: ${relativePath}`);
   assetBytes += statSync(filePath).size;
 }
-for (const assetId of ["leap-to-lanka-night", "hanuman-wind"]) {
+for (const assetId of [
+  "leap-to-lanka-night",
+  "hanuman-wind",
+  "hanuman-animation-poses",
+]) {
   assertContent(
     assetManifest.includes(`id: ${assetId}`),
     `asset manifest is missing ${assetId}`,
@@ -90,8 +107,26 @@ assertContent(
   "all active prototype assets must be approved for prototype use",
 );
 assertContent(
-  assetBytes <= 10 * 1024 * 1024,
-  "prototype source assets exceed the 10 MB budget",
+  assetBytes <= 25 * 1024 * 1024,
+  "prototype source assets exceed the 25 MB budget",
+);
+const runtimeAssetFiles = [
+  "source/backgrounds/leap-to-lanka-night.png",
+  "source/characters/hanuman-wind.png",
+  "source/characters/hanuman-run-a.png",
+  "source/characters/hanuman-run-mid.png",
+  "source/characters/hanuman-run-b.png",
+  "source/characters/hanuman-air.png",
+  "source/characters/hanuman-attack-windup.png",
+  "source/characters/hanuman-attack-impact.png",
+];
+const runtimeAssetBytes = runtimeAssetFiles.reduce(
+  (total, relativePath) => total + statSync(resolve(assetRoot, relativePath)).size,
+  0,
+);
+assertContent(
+  runtimeAssetBytes <= 10 * 1024 * 1024,
+  "runtime image assets exceed the 10 MB budget",
 );
 
 console.log(

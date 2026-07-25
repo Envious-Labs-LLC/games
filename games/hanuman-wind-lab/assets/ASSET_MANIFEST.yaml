@@ -20,3 +20,26 @@ assets:
     humanReviewed: false
     prototypeUseApproved: true
     notes: Original transparent prototype hero. Requires founder review before production use.
+  - id: hanuman-animation-poses
+    files:
+      - source/characters/hanuman-run-a.png
+      - source/characters/hanuman-run-mid.png
+      - source/characters/hanuman-run-b.png
+      - source/characters/hanuman-air.png
+      - source/characters/hanuman-attack-windup.png
+      - source/characters/hanuman-attack-impact.png
+    sourceFiles:
+      - source/characters/hanuman-run-a-chroma.png
+      - source/characters/hanuman-run-mid-chroma.png
+      - source/characters/hanuman-run-b-chroma.png
+      - source/characters/hanuman-air-chroma.png
+      - source/characters/hanuman-attack-windup-chroma.png
+      - source/characters/hanuman-attack-impact-chroma.png
+    type: character-animation
+    source: OpenAI built-in image generation
+    prompt: source/prompts/hanuman-animation-poses.md
+    generated: 2026-07-25
+    approvedForCommercial: false
+    humanReviewed: false
+    prototypeUseApproved: true
+    notes: Original six-pose prototype animation set. Requires founder review before production use.

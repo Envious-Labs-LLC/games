@@ -93,6 +93,96 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
   expect(errors).toEqual([]);
 });
 
+test("Hanuman visibly cycles run, air, and gada attack poses", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/?seed=208");
+  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_HERO_POSE__))
+    .toBe("idle");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_HERO_TEXTURE__))
+    .toBe("hanuman-wind");
+
+  const startingX = await page.evaluate(() => window.__WIND_STATE__.player.x);
+  await page.keyboard.down("d");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__WIND_HERO_POSE_HISTORY__.includes("run-a") &&
+          window.__WIND_HERO_POSE_HISTORY__.includes("run-mid") &&
+          window.__WIND_HERO_POSE_HISTORY__.includes("run-b"),
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__WIND_HERO_TEXTURE_HISTORY__.includes("hanuman-run-a") &&
+          window.__WIND_HERO_TEXTURE_HISTORY__.includes("hanuman-run-mid") &&
+          window.__WIND_HERO_TEXTURE_HISTORY__.includes("hanuman-run-b"),
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.x))
+    .toBeGreaterThan(startingX + 70);
+  await page.keyboard.up("d");
+
+  await page.keyboard.press("Space");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_HERO_POSE__))
+    .toBe("air");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_HERO_TEXTURE__))
+    .toBe("hanuman-air");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.onGround))
+    .toBe(true);
+
+  await page.evaluate(() => {
+    window.__WIND_HERO_POSE_HISTORY__ = [];
+    window.__WIND_HERO_TEXTURE_HISTORY__ = [];
+  });
+  await page.keyboard.press("j");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__WIND_HERO_POSE_HISTORY__.includes("attack-windup") &&
+          window.__WIND_HERO_POSE_HISTORY__.includes("attack-impact"),
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__WIND_HERO_TEXTURE_HISTORY__.includes(
+            "hanuman-attack-windup",
+          ) &&
+          window.__WIND_HERO_TEXTURE_HISTORY__.includes(
+            "hanuman-attack-impact",
+          ),
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.attackTimer))
+    .toBe(0);
+
+  expect(errors).toEqual([]);
+});
+
 test("shadow sentry renders nearby and yields to Mountain dash", async ({
   page,
 }) => {
