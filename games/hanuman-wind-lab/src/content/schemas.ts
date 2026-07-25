@@ -31,6 +31,7 @@ export const movementSchema = z.object({
     wallSlideSpeed: positiveNumber,
     earthSlam: z.object({
       speed: positiveNumber,
+      shockwaveRadius: positiveNumber,
     }),
   }),
   wallSlideSpeed: positiveNumber,

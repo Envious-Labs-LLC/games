@@ -21,6 +21,7 @@ export interface BotResult {
   totalAnchors: number;
   earthSlamStarts: number;
   earthSlamImpacts: number;
+  earthSlamSealBreaks: number;
 }
 
 export function runOne(seed: number, maxTicks = 12_000): BotResult {
@@ -53,11 +54,13 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
       nextSeal === undefined
         ? Number.POSITIVE_INFINITY
         : nextSeal.x - state.player.x;
-    const approachingSeal = sealDistance > -40 && sealDistance < 150;
+    const approachingSeal =
+      targetDirection === 1 && sealDistance > -40 && sealDistance < 150;
     const wantsSafeSlam =
       state.player.earthSlamImpactCount === 0 &&
-      state.player.x > 850 &&
-      state.player.x < 1050;
+      state.sigils[1]?.collected === true &&
+      state.player.x > 1000 &&
+      state.player.x < 1100;
     const wantsMountain = approachingSeal || wantsSafeSlam;
 
     input.formPressed =
@@ -116,5 +119,6 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
     totalAnchors: state.windAnchors.length,
     earthSlamStarts: state.player.earthSlamStartCount,
     earthSlamImpacts: state.player.earthSlamImpactCount,
+    earthSlamSealBreaks: state.player.earthSlamSealBreakCount,
   };
 }

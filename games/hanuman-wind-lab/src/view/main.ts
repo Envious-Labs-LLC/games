@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import {
   createGame,
+  EARTH_SLAM_SHOCKWAVE_RADIUS,
   emptyInput,
   findUsableWindAnchorIndex,
   step,
@@ -299,7 +300,9 @@ class WindScene extends Phaser.Scene {
       const y = burst.y - this.cameraY;
       const alpha = Phaser.Math.Clamp(burst.ttl * 4, 0, 1);
       if (burst.kind === "shockwave") {
-        const spread = (1 - Phaser.Math.Clamp(burst.ttl / 0.65, 0, 1)) * 145;
+        const spread =
+          (1 - Phaser.Math.Clamp(burst.ttl / 0.65, 0, 1)) *
+          EARTH_SLAM_SHOCKWAVE_RADIUS;
         g.lineStyle(7, 0xffc15e, alpha);
         g.beginPath();
         g.arc(x, y + 2, spread, Math.PI, Math.PI * 2, false);
@@ -359,6 +362,15 @@ class WindScene extends Phaser.Scene {
       `WIND SIGILS  ${collected} / ${this.state.sigils.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}\nFORM  ${this.state.player.form.toUpperCase()}   VAULTS ${this.state.player.anchorUseCount}   SLAMS ${this.state.player.earthSlamImpactCount}`,
     );
 
+    const nearCrackedStone = this.state.seals.some((seal) => {
+      if (seal.broken) return false;
+      const closestX = Phaser.Math.Clamp(
+        this.state.player.x,
+        seal.x,
+        seal.x + seal.width,
+      );
+      return Math.abs(this.state.player.x - closestX) <= 220;
+    });
     const centerMessage =
       this.state.status === "won"
         ? `THE WIND REMEMBERS\n${formatTime(this.state.elapsed)}  •  ${this.state.falls} FALLS\nPRESS R TO RUN AGAIN`
@@ -366,6 +378,8 @@ class WindScene extends Phaser.Scene {
           ? "PRESS A / D TO BEGIN THE LEAP"
           : collected === this.state.sigils.length
             ? "ALL SIGILS FOUND. REACH THE GOLDEN SHRINE."
+            : nearCrackedStone
+              ? "CRACKED STONE\nMOUNTAIN: DASH OR JUMP, THEN Q"
             : "";
     this.centerText.setText(centerMessage);
     this.centerText.setVisible(centerMessage.length > 0);

@@ -26,7 +26,8 @@
     "dashSpeed": 840,
     "wallSlideSpeed": 165,
     "earthSlam": {
-      "speed": 1100
+      "speed": 1100,
+      "shockwaveRadius": 150
     }
   },
   "wallSlideSpeed": 105,

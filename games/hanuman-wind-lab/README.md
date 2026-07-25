@@ -9,7 +9,7 @@ Collect seven wind sigils and reach the golden shrine. Switch between agile Wind
 Form and heavy Mountain Form. Wind Form glides through long crossings. Mountain
 Form can dash through cracked stone seals. Wind Form can also launch from
 glowing wind anchors to chain large aerial leaps. Mountain Form can answer with
-a committed earth-slam and landing shockwave.
+a committed earth-slam whose landing shockwave shatters nearby cracked stone.
 
 ## Controls
 

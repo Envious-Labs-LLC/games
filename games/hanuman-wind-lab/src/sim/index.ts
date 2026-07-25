@@ -5,6 +5,8 @@ import { makeRng, type Rng } from "./rng";
 export const FIXED_DT = 1 / 60;
 export const PLAYER_HALF_WIDTH = 15;
 export const PLAYER_HEIGHT = 48;
+export const EARTH_SLAM_SHOCKWAVE_RADIUS =
+  movement.mountainForm.earthSlam.shockwaveRadius;
 
 export type GameStatus = "playing" | "won";
 export type PlayerForm = "wind" | "mountain";
@@ -84,6 +86,7 @@ export interface Player {
   earthSlamming: boolean;
   earthSlamStartCount: number;
   earthSlamImpactCount: number;
+  earthSlamSealBreakCount: number;
 }
 
 export interface GameState {
@@ -153,6 +156,7 @@ export function createGame(seed: number): GameState {
       earthSlamming: false,
       earthSlamStartCount: 0,
       earthSlamImpactCount: 0,
+      earthSlamSealBreakCount: 0,
     },
     platforms: course.platforms.map((platform) => ({ ...platform })),
     sigils: course.sigils.map((sigil) => ({ ...sigil, collected: false })),
@@ -444,6 +448,7 @@ function moveAndCollide(state: GameState, dt: number): void {
       if (wasEarthSlamming) {
         player.earthSlamming = false;
         player.earthSlamImpactCount += 1;
+        player.earthSlamSealBreakCount += breakSealsFromEarthSlam(state);
         addBurst(state, "shockwave", player.x, player.y, player.facing);
       } else {
         addBurst(state, "land", player.x, player.y, player.facing);
@@ -534,6 +539,35 @@ function tryEarthSlam(state: GameState): boolean {
   player.dashTimer = 0;
   addBurst(state, "slam", player.x, player.y - PLAYER_HEIGHT * 0.5, player.facing);
   return true;
+}
+
+function breakSealsFromEarthSlam(state: GameState): number {
+  const impactX = state.player.x;
+  const impactY = state.player.y;
+  const radiusSquared =
+    EARTH_SLAM_SHOCKWAVE_RADIUS * EARTH_SLAM_SHOCKWAVE_RADIUS;
+  let brokenCount = 0;
+
+  for (const seal of state.seals) {
+    if (seal.broken) continue;
+    const closestX = clamp(impactX, seal.x, seal.x + seal.width);
+    const closestY = clamp(impactY, seal.y, seal.y + seal.height);
+    const dx = impactX - closestX;
+    const dy = impactY - closestY;
+    if (dx * dx + dy * dy > radiusSquared) continue;
+
+    seal.broken = true;
+    brokenCount += 1;
+    addBurst(
+      state,
+      "break",
+      seal.x + seal.width * 0.5,
+      seal.y + seal.height * 0.5,
+      state.player.facing,
+    );
+  }
+
+  return brokenCount;
 }
 
 export function findUsableWindAnchorIndex(state: GameState): number | null {

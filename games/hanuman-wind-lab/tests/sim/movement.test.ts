@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createGame,
+  EARTH_SLAM_SHOCKWAVE_RADIUS,
   emptyInput,
   findUsableWindAnchorIndex,
   step,
@@ -366,6 +367,113 @@ describe("Hanuman Wind Lab movement", () => {
     expect(state.player.earthSlamImpactCount).toBe(1);
   });
 
+  it("shatters cracked stone at the earth-slam shockwave boundary", () => {
+    let state = createGame(75);
+    const seal = state.seals[0]!;
+    state.player.form = "mountain";
+    state.player.x = seal.x - EARTH_SLAM_SHOCKWAVE_RADIUS;
+    state.player.y = 340;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(state, emptyInput(), 4);
+
+    expect(state.player.earthSlamImpactCount).toBe(1);
+    expect(state.player.earthSlamSealBreakCount).toBe(1);
+    expect(seal.broken).toBe(true);
+    expect(
+      state.bursts.filter((burst) => burst.kind === "break"),
+    ).toHaveLength(1);
+    expect(
+      state.bursts.filter((burst) => burst.kind === "shockwave"),
+    ).toHaveLength(1);
+  });
+
+  it("leaves cracked stone intact outside the earth-slam shockwave", () => {
+    let state = createGame(76);
+    const seal = state.seals[0]!;
+    state.player.form = "mountain";
+    state.player.x =
+      seal.x - EARTH_SLAM_SHOCKWAVE_RADIUS - 1;
+    state.player.y = 340;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(state, emptyInput(), 4);
+
+    expect(state.player.earthSlamImpactCount).toBe(1);
+    expect(state.player.earthSlamSealBreakCount).toBe(0);
+    expect(seal.broken).toBe(false);
+    expect(
+      state.bursts.filter((burst) => burst.kind === "break"),
+    ).toHaveLength(0);
+  });
+
+  it("does not count already-shattered stone twice", () => {
+    let state = createGame(77);
+    const seal = state.seals[0]!;
+    seal.broken = true;
+    state.player.form = "mountain";
+    state.player.x = seal.x;
+    state.player.y = 340;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(state, emptyInput(), 12);
+
+    expect(state.player.earthSlamImpactCount).toBe(1);
+    expect(state.player.earthSlamSealBreakCount).toBe(0);
+    expect(
+      state.bursts.filter((burst) => burst.kind === "break"),
+    ).toHaveLength(0);
+  });
+
+  it("uses an earth-slam for one seal and a dash for the other", () => {
+    let state = createGame(78);
+    const firstSeal = state.seals[0]!;
+    const secondSeal = state.seals[1]!;
+    state.player.form = "mountain";
+    state.player.x = firstSeal.x - EARTH_SLAM_SHOCKWAVE_RADIUS;
+    state.player.y = 340;
+    state.player.onGround = false;
+    state = step(
+      state,
+      { ...emptyInput(), powerPressed: true },
+      FIXED_DT,
+    );
+    state = runTicks(state, emptyInput(), 4);
+
+    expect(firstSeal.broken).toBe(true);
+    expect(secondSeal.broken).toBe(false);
+    expect(state.player.earthSlamSealBreakCount).toBe(1);
+
+    state.player.form = "mountain";
+    state.player.facing = 1;
+    state.player.x = secondSeal.x - PLAYER_HALF_WIDTH - 1;
+    state.player.y = 500;
+    state.player.onGround = true;
+    state.player.dashAvailable = true;
+    state.player.dashTimer = 0;
+    state = step(
+      state,
+      { ...emptyInput(), dashPressed: true },
+      FIXED_DT,
+    );
+
+    expect(secondSeal.broken).toBe(true);
+    expect(state.seals.filter((seal) => seal.broken)).toHaveLength(2);
+    expect(state.player.earthSlamSealBreakCount).toBe(1);
+  });
+
   it("lets grounded Mountain power attempts fall through to jump or dash", () => {
     let dashState = createGame(64);
     dashState.player.form = "mountain";
@@ -483,6 +591,7 @@ describe("Hanuman Wind Lab movement", () => {
 
     expect(state.player.onGround).toBe(true);
     expect(state.player.earthSlamImpactCount).toBe(0);
+    expect(state.player.earthSlamSealBreakCount).toBe(0);
     expect(
       state.bursts.filter((burst) => burst.kind === "shockwave"),
     ).toHaveLength(0);
@@ -733,6 +842,7 @@ describe("Hanuman Wind Lab movement", () => {
     mountainState.player.form = "mountain";
     step(mountainState, { ...emptyInput(), dashPressed: true }, FIXED_DT);
     expect(mountainSeal.broken).toBe(true);
+    expect(mountainState.player.earthSlamSealBreakCount).toBe(0);
     expect(mountainState.player.x).toBeGreaterThan(mountainSeal.x - 16);
 
     const rightState = createGame(41);

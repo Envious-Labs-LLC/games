@@ -21,6 +21,7 @@ let totalEarthSlamStarts = 0;
 let totalEarthSlamImpacts = 0;
 let runsStartingEarthSlam = 0;
 let runsLandingEarthSlam = 0;
+let runsBreakingExactlyOneSealWithEarthSlam = 0;
 
 for (let index = 0; index < runs; index += 1) {
   try {
@@ -40,6 +41,9 @@ for (let index = 0; index < runs; index += 1) {
     totalEarthSlamImpacts += result.earthSlamImpacts;
     if (result.earthSlamStarts > 0) runsStartingEarthSlam += 1;
     if (result.earthSlamImpacts > 0) runsLandingEarthSlam += 1;
+    if (result.earthSlamSealBreaks === 1) {
+      runsBreakingExactlyOneSealWithEarthSlam += 1;
+    }
   } catch {
     crashes += 1;
   }
@@ -63,6 +67,7 @@ console.log(
     runsUsingAllWindAnchors,
     runsStartingEarthSlam,
     runsLandingEarthSlam,
+    runsBreakingExactlyOneSealWithEarthSlam,
     averageEarthSlams:
       runs > 0 ? Number((totalEarthSlamImpacts / runs).toFixed(2)) : 0,
   }),
@@ -75,6 +80,7 @@ process.exit(
     runsBreakingBothSeals !== runs ||
     runsStartingEarthSlam !== runs ||
     runsLandingEarthSlam !== runs ||
+    runsBreakingExactlyOneSealWithEarthSlam !== runs ||
     totalEarthSlamStarts !== totalEarthSlamImpacts
     ? 1
     : 0,
