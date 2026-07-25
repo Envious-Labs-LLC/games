@@ -34,5 +34,5 @@ docs/               design notes, plans, session log
 
 ## Status
 
-Crawl. The first playable, `games/flame-of-lanka-prototype`, is ready for
-founder playtesting in a browser.
+Crawl. Two browser experiments are ready for founder playtesting:
+`flame-of-lanka-prototype` tests combat and `hanuman-wind-lab` tests traversal.

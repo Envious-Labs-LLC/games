@@ -8,3 +8,5 @@ Each game is self-contained: its own `package.json`, `src/sim/` (pure logic) and
 
 - `flame-of-lanka-prototype`: a short side-scrolling combat prototype. Crawl
   stage, ready for founder playtesting.
+- `hanuman-wind-lab`: a short wind-powered traversal experiment. Crawl stage,
+  ready for founder playtesting.

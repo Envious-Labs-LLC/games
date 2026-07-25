@@ -1,0 +1,20 @@
+{
+  "worldWidth": 3700,
+  "worldHeight": 650,
+  "runSpeed": 290,
+  "groundAcceleration": 2400,
+  "airAcceleration": 1450,
+  "friction": 2600,
+  "gravity": 1750,
+  "jumpSpeed": 575,
+  "jumpHoldForce": 1200,
+  "jumpHoldTime": 0.2,
+  "maxFallSpeed": 760,
+  "glideFallSpeed": 125,
+  "dashSpeed": 760,
+  "dashDuration": 0.14,
+  "wallSlideSpeed": 105,
+  "wallJumpX": 410,
+  "coyoteTime": 0.11,
+  "jumpBufferTime": 0.12
+}
