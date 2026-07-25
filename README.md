@@ -34,4 +34,5 @@ docs/               design notes, plans, session log
 
 ## Status
 
-Crawl. Harness built. No game scaffolded yet. Next: `/new-game-project`.
+Crawl. The first playable, `games/flame-of-lanka-prototype`, is ready for
+founder playtesting in a browser.
