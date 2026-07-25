@@ -10,6 +10,7 @@ export function bufferInput(buffered: Input, observed: Input): Input {
     jumpPressed: buffered.jumpPressed || observed.jumpPressed,
     jumpHeld: observed.jumpHeld,
     dashPressed: buffered.dashPressed || observed.dashPressed,
+    formPressed: buffered.formPressed || observed.formPressed,
     restart: buffered.restart || observed.restart,
   };
 }
@@ -18,6 +19,7 @@ export function consumeBufferedInput(buffered: Input): Input {
   const consumed = { ...buffered };
   buffered.jumpPressed = false;
   buffered.dashPressed = false;
+  buffered.formPressed = false;
   buffered.restart = false;
   return consumed;
 }

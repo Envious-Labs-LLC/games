@@ -7,6 +7,7 @@ import {
   type GameState,
   type Input,
   type Platform,
+  type Seal,
 } from "../sim/index";
 import {
   bufferInput,
@@ -84,7 +85,7 @@ class WindScene extends Phaser.Scene {
       .text(
         WIDTH / 2,
         HEIGHT - 18,
-        "MOVE  A / D    JUMP + GLIDE  SPACE    DASH  SHIFT    WALL JUMP  SPACE",
+        "MOVE  A / D    JUMP + GLIDE  SPACE    DASH  SHIFT    CHANGE FORM  E",
         {
           fontFamily: "Arial, sans-serif",
           fontSize: "12px",
@@ -116,6 +117,7 @@ class WindScene extends Phaser.Scene {
       d: Phaser.Input.Keyboard.KeyCodes.D,
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
       shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      e: Phaser.Input.Keyboard.KeyCodes.E,
       r: Phaser.Input.Keyboard.KeyCodes.R,
     }) as Record<string, Phaser.Input.Keyboard.Key>;
 
@@ -154,6 +156,7 @@ class WindScene extends Phaser.Scene {
     input.jumpPressed = Phaser.Input.Keyboard.JustDown(this.keys.space!);
     input.jumpHeld = this.keys.space!.isDown;
     input.dashPressed = Phaser.Input.Keyboard.JustDown(this.keys.shift!);
+    input.formPressed = Phaser.Input.Keyboard.JustDown(this.keys.e!);
     input.restart = Phaser.Input.Keyboard.JustDown(this.keys.r!);
     return input;
   }
@@ -203,6 +206,9 @@ class WindScene extends Phaser.Scene {
     drawCloud(g, 1120 - this.cameraX * 0.1, 105 - this.cameraY * 0.03, 1.2);
 
     for (const platform of this.state.platforms) drawPlatform(g, platform, this.cameraX, this.cameraY);
+    for (const seal of this.state.seals) {
+      if (!seal.broken) drawSeal(g, seal, this.cameraX, this.cameraY);
+    }
 
     for (let index = 0; index < this.state.sigils.length; index += 1) {
       const sigil = this.state.sigils[index]!;
@@ -265,8 +271,16 @@ class WindScene extends Phaser.Scene {
       const x = burst.x - this.cameraX;
       const y = burst.y - this.cameraY;
       const alpha = Phaser.Math.Clamp(burst.ttl * 4, 0, 1);
-      const count = burst.kind === "sigil" ? 12 : 7;
-      g.lineStyle(burst.kind === "dash" ? 4 : 3, burst.kind === "fall" ? 0xffb45b : 0xc5fbff, alpha);
+      const count = burst.kind === "sigil" || burst.kind === "break" ? 12 : 7;
+      const color =
+        burst.kind === "fall"
+          ? 0xffb45b
+          : burst.kind === "break"
+            ? 0xffc15e
+            : burst.kind === "transform"
+              ? 0xffe38b
+              : 0xc5fbff;
+      g.lineStyle(burst.kind === "dash" ? 4 : 3, color, alpha);
       for (let index = 0; index < count; index += 1) {
         const angle = (Math.PI * 2 * index) / count;
         const distance = (1 - alpha) * (burst.kind === "sigil" ? 75 : 42);
@@ -296,12 +310,12 @@ class WindScene extends Phaser.Scene {
     }
 
     g.fillStyle(0x071826, 0.8);
-    g.fillRoundedRect(WIDTH - 188, 68, 163, 29, 8);
+    g.fillRoundedRect(WIDTH - 188, 86, 163, 29, 8);
     g.fillStyle(this.state.player.dashAvailable ? 0x9ef6ff : 0x335463, 1);
-    g.fillRoundedRect(WIDTH - 178, 78, this.state.player.dashAvailable ? 143 : 0, 9, 4);
+    g.fillRoundedRect(WIDTH - 178, 96, this.state.player.dashAvailable ? 143 : 0, 9, 4);
 
     this.statsText.setText(
-      `WIND SIGILS  ${collected} / ${this.state.sigils.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}`,
+      `WIND SIGILS  ${collected} / ${this.state.sigils.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}\nFORM  ${this.state.player.form.toUpperCase()}`,
     );
 
     const centerMessage =
@@ -329,19 +343,34 @@ function drawHero(
   player: GameState["player"],
   alpha: number,
 ): void {
+  const mountainForm = player.form === "mountain";
   const lean = player.dashTimer > 0 ? player.facing * 10 : player.vx * 0.015;
   const lift = player.gliding ? -8 : 0;
   g.fillStyle(0x03101a, 0.22 * alpha);
-  g.fillEllipse(x, y + 4, 62, 12);
+  g.fillEllipse(x, y + 4, mountainForm ? 76 : 62, mountainForm ? 16 : 12);
+
+  if (mountainForm) {
+    g.fillStyle(0xffb655, 0.12 * alpha);
+    g.fillCircle(x, y - 29, 39);
+  }
 
   g.lineStyle(5, 0xb76834, alpha);
   g.lineBetween(x - player.facing * 10, y - 31, x - player.facing * 34, y - 22);
   g.lineBetween(x - player.facing * 34, y - 22, x - player.facing * 43, y - 7);
 
-  g.fillStyle(0xc76e34, alpha);
-  g.fillEllipse(x + lean * 0.15, y - 27 + lift, 30, 39);
+  g.fillStyle(mountainForm ? 0xa94e25 : 0xc76e34, alpha);
+  g.fillEllipse(
+    x + lean * 0.15,
+    y - 27 + lift,
+    mountainForm ? 40 : 30,
+    mountainForm ? 46 : 39,
+  );
   g.fillStyle(0xf1c885, alpha);
-  g.fillCircle(x + player.facing * 4 + lean * 0.25, y - 55 + lift, 13);
+  g.fillCircle(
+    x + player.facing * 4 + lean * 0.25,
+    y - 55 + lift,
+    mountainForm ? 16 : 13,
+  );
   g.fillTriangle(
     x + player.facing * 11,
     y - 59 + lift,
@@ -388,6 +417,29 @@ function drawHero(
         y - 14 - index * 12,
       );
     }
+  }
+}
+
+function drawSeal(
+  g: Phaser.GameObjects.Graphics,
+  seal: Seal,
+  cameraX: number,
+  cameraY: number,
+): void {
+  const x = seal.x - cameraX;
+  const y = seal.y - cameraY;
+  if (x + seal.width < -80 || x > WIDTH + 80) return;
+  g.fillStyle(0x314955, 0.95);
+  g.fillRoundedRect(x, y, seal.width, seal.height, 5);
+  g.lineStyle(3, 0xffc15e, 0.9);
+  for (let offset = 18; offset < seal.height; offset += 36) {
+    g.lineBetween(x + 3, y + offset, x + seal.width * 0.7, y + offset + 13);
+    g.lineBetween(
+      x + seal.width * 0.7,
+      y + offset + 13,
+      x + seal.width - 3,
+      y + offset + 4,
+    );
   }
 }
 

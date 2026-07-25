@@ -5,9 +5,9 @@ strong foundation for a Hanuman-inspired game.
 
 ## Goal
 
-Collect seven wind sigils and reach the golden shrine. The course tests variable
-jump height, gliding, air dashing, wall sliding, wall jumping, gaps, recovery,
-and vertical traversal.
+Collect seven wind sigils and reach the golden shrine. Switch between agile Wind
+Form and heavy Mountain Form. Wind Form glides through long crossings. Mountain
+Form can dash through cracked stone seals.
 
 ## Controls
 
@@ -16,6 +16,7 @@ and vertical traversal.
 - Higher leap: hold Space while rising
 - Glide: hold Space while falling
 - Ground or air dash: Shift
+- Change form: E
 - Wall jump: press Space while touching a wall
 - Restart: R
 

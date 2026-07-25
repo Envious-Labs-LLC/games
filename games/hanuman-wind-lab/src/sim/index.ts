@@ -7,13 +7,22 @@ export const PLAYER_HALF_WIDTH = 15;
 export const PLAYER_HEIGHT = 48;
 
 export type GameStatus = "playing" | "won";
-export type BurstKind = "jump" | "dash" | "land" | "sigil" | "fall";
+export type PlayerForm = "wind" | "mountain";
+export type BurstKind =
+  | "jump"
+  | "dash"
+  | "land"
+  | "sigil"
+  | "fall"
+  | "transform"
+  | "break";
 
 export interface Input {
   moveX: -1 | 0 | 1;
   jumpPressed: boolean;
   jumpHeld: boolean;
   dashPressed: boolean;
+  formPressed: boolean;
   restart: boolean;
 }
 
@@ -28,6 +37,10 @@ export interface Sigil {
   x: number;
   y: number;
   collected: boolean;
+}
+
+export interface Seal extends Platform {
+  broken: boolean;
 }
 
 export interface Burst {
@@ -54,6 +67,8 @@ export interface Player {
   coyoteTimer: number;
   jumpBufferTimer: number;
   gliding: boolean;
+  form: PlayerForm;
+  formShiftCount: number;
 }
 
 export interface GameState {
@@ -68,6 +83,7 @@ export interface GameState {
   player: Player;
   platforms: Platform[];
   sigils: Sigil[];
+  seals: Seal[];
   finish: { x: number; y: number };
   checkpoint: { x: number; y: number };
   falls: number;
@@ -82,6 +98,7 @@ export function emptyInput(): Input {
     jumpPressed: false,
     jumpHeld: false,
     dashPressed: false,
+    formPressed: false,
     restart: false,
   };
 }
@@ -111,9 +128,12 @@ export function createGame(seed: number): GameState {
       coyoteTimer: movement.coyoteTime,
       jumpBufferTimer: 0,
       gliding: false,
+      form: "wind",
+      formShiftCount: 0,
     },
     platforms: course.platforms.map((platform) => ({ ...platform })),
     sigils: course.sigils.map((sigil) => ({ ...sigil, collected: false })),
+    seals: course.seals.map((seal) => ({ ...seal, broken: false })),
     finish: { ...course.finish },
     checkpoint: { x: 110, y: 500 },
     falls: 0,
@@ -134,7 +154,11 @@ export function step(state: GameState, input: Input, dt: number): GameState {
   }
 
   const isAction =
-    input.moveX !== 0 || input.jumpPressed || input.jumpHeld || input.dashPressed;
+    input.moveX !== 0 ||
+    input.jumpPressed ||
+    input.jumpHeld ||
+    input.dashPressed ||
+    input.formPressed;
   if (!state.started && !isAction) return state;
   state.started = true;
   state.elapsed += dt;
@@ -158,6 +182,13 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
   const player = state.player;
   if (input.moveX !== 0) player.facing = input.moveX;
 
+  if (input.formPressed) {
+    player.form = player.form === "wind" ? "mountain" : "wind";
+    player.formShiftCount += 1;
+    player.gliding = false;
+    addBurst(state, "transform", player.x, player.y - 24, player.facing);
+  }
+
   if (input.jumpPressed) player.jumpBufferTimer = movement.jumpBufferTime;
   else player.jumpBufferTimer = Math.max(0, player.jumpBufferTimer - dt);
 
@@ -169,7 +200,7 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
     player.dashTimer = movement.dashDuration;
     if (airborne) player.dashAvailable = false;
     player.dashCount += 1;
-    player.vx = player.facing * movement.dashSpeed;
+    player.vx = player.facing * dashSpeedFor(player.form);
     player.vy = 0;
     addBurst(state, "dash", player.x, player.y - 24, player.facing);
   }
@@ -180,7 +211,10 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
       player.vx = -player.wallSide * movement.wallJumpX;
       player.facing = player.wallSide === 1 ? -1 : 1;
     }
-    player.vy = -movement.jumpSpeed;
+    player.vy =
+      player.form === "mountain"
+        ? -movement.mountainForm.jumpSpeed
+        : -movement.jumpSpeed;
     player.onGround = false;
     player.coyoteTimer = 0;
     player.jumpBufferTimer = 0;
@@ -191,14 +225,17 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
   }
 
   if (player.dashTimer > 0) {
-    player.dashTimer = Math.max(0, player.dashTimer - dt);
-    player.vx = player.facing * movement.dashSpeed;
+    player.vx = player.facing * dashSpeedFor(player.form);
     player.vy = 0;
   } else {
     const acceleration = player.onGround
       ? movement.groundAcceleration
       : movement.airAcceleration;
-    const targetVx = input.moveX * movement.runSpeed;
+    const runSpeed =
+      player.form === "mountain"
+        ? movement.mountainForm.runSpeed
+        : movement.runSpeed;
+    const targetVx = input.moveX * runSpeed;
     if (input.moveX !== 0) {
       player.vx = approach(player.vx, targetVx, acceleration * dt);
     } else if (player.onGround) {
@@ -214,13 +251,22 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
       player.jumpHoldTimer = 0;
     }
 
-    player.gliding = input.jumpHeld && player.vy > 20 && !player.onGround;
-    const gravity = player.gliding ? movement.gravity * 0.2 : movement.gravity;
+    player.gliding =
+      player.form === "wind" &&
+      input.jumpHeld &&
+      player.vy > 20 &&
+      !player.onGround;
+    const baseGravity =
+      player.form === "mountain"
+        ? movement.mountainForm.gravity
+        : movement.gravity;
+    const gravity = player.gliding ? baseGravity * 0.2 : baseGravity;
     player.vy = Math.min(player.vy + gravity * dt, movement.maxFallSpeed);
     if (player.gliding) player.vy = Math.min(player.vy, movement.glideFallSpeed);
   }
 
   moveAndCollide(state, dt);
+  player.dashTimer = Math.max(0, player.dashTimer - dt);
 
   if (player.y > state.worldHeight) {
     state.falls += 1;
@@ -265,13 +311,50 @@ function moveAndCollide(state: GameState, dt: number): void {
       player.wallSide = -1;
     }
   }
+
+  for (const seal of state.seals) {
+    if (seal.broken || !verticalOverlap(previousY, seal)) continue;
+    const previousRight = previousX + PLAYER_HALF_WIDTH;
+    const nextRight = nextX + PLAYER_HALF_WIDTH;
+    const previousLeft = previousX - PLAYER_HALF_WIDTH;
+    const nextLeft = nextX - PLAYER_HALF_WIDTH;
+    const hitsFromLeft =
+      player.vx > 0 && previousRight <= seal.x && nextRight >= seal.x;
+    const hitsFromRight =
+      player.vx < 0 &&
+      previousLeft >= seal.x + seal.width &&
+      nextLeft <= seal.x + seal.width;
+    if (!hitsFromLeft && !hitsFromRight) continue;
+
+    if (player.form === "mountain" && player.dashTimer > 0) {
+      seal.broken = true;
+      addBurst(
+        state,
+        "break",
+        seal.x + seal.width * 0.5,
+        seal.y + seal.height * 0.5,
+        player.facing,
+      );
+      continue;
+    }
+
+    nextX = hitsFromLeft
+      ? seal.x - PLAYER_HALF_WIDTH
+      : seal.x + seal.width + PLAYER_HALF_WIDTH;
+    player.vx = 0;
+    player.wallSide = hitsFromLeft ? 1 : -1;
+  }
   player.x = nextX;
 
   const nextY = previousY + player.vy * dt;
   let landedY: number | null = null;
   let ceilingY: number | null = null;
 
-  for (const platform of state.platforms) {
+  const verticalSurfaces: Platform[] = [
+    ...state.platforms,
+    ...state.seals.filter((seal) => !seal.broken),
+  ];
+  for (const platform of verticalSurfaces) {
     if (!horizontalOverlap(player.x, platform)) continue;
     if (player.vy >= 0 && previousY <= platform.y && nextY >= platform.y) {
       landedY = landedY === null ? platform.y : Math.min(landedY, platform.y);
@@ -307,8 +390,12 @@ function moveAndCollide(state: GameState, dt: number): void {
     player.onGround = false;
   }
 
-  if (player.wallSide !== 0 && !player.onGround && player.vy > movement.wallSlideSpeed) {
-    player.vy = movement.wallSlideSpeed;
+  const wallSlideSpeed =
+    player.form === "mountain"
+      ? movement.mountainForm.wallSlideSpeed
+      : movement.wallSlideSpeed;
+  if (player.wallSide !== 0 && !player.onGround && player.vy > wallSlideSpeed) {
+    player.vy = wallSlideSpeed;
     player.dashAvailable = true;
   }
 }
@@ -369,6 +456,12 @@ function addBurst(
     facing,
     ttl: kind === "sigil" ? 0.65 : 0.3,
   });
+}
+
+function dashSpeedFor(form: PlayerForm): number {
+  return form === "mountain"
+    ? movement.mountainForm.dashSpeed
+    : movement.dashSpeed;
 }
 
 function tickBursts(state: GameState, dt: number): void {

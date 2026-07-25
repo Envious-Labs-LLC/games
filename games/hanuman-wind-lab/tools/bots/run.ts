@@ -12,6 +12,8 @@ let wins = 0;
 let timeouts = 0;
 let totalSigils = 0;
 let totalFalls = 0;
+let runsBreakingBothSeals = 0;
+let totalFormShifts = 0;
 
 for (let index = 0; index < runs; index += 1) {
   try {
@@ -20,6 +22,8 @@ for (let index = 0; index < runs; index += 1) {
     else timeouts += 1;
     totalSigils += result.sigils;
     totalFalls += result.falls;
+    if (result.sealsBroken === 2) runsBreakingBothSeals += 1;
+    totalFormShifts += result.formShifts;
   } catch {
     crashes += 1;
   }
@@ -34,6 +38,9 @@ console.log(
     winRate: runs > 0 ? Number((wins / runs).toFixed(3)) : 0,
     averageSigils: runs > 0 ? Number((totalSigils / runs).toFixed(2)) : 0,
     averageFalls: runs > 0 ? Number((totalFalls / runs).toFixed(2)) : 0,
+    runsBreakingBothSeals,
+    averageFormShifts:
+      runs > 0 ? Number((totalFormShifts / runs).toFixed(2)) : 0,
   }),
 );
 process.exit(crashes > 0 ? 1 : 0);

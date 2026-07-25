@@ -17,6 +17,13 @@ export const movementSchema = z.object({
   glideFallSpeed: positiveNumber,
   dashSpeed: positiveNumber,
   dashDuration: positiveNumber,
+  mountainForm: z.object({
+    runSpeed: positiveNumber,
+    jumpSpeed: positiveNumber,
+    gravity: positiveNumber,
+    dashSpeed: positiveNumber,
+    wallSlideSpeed: positiveNumber,
+  }),
   wallSlideSpeed: positiveNumber,
   wallJumpX: positiveNumber,
   coyoteTime: positiveNumber,
@@ -32,5 +39,6 @@ const platformSchema = pointSchema.extend({
 export const courseSchema = z.object({
   platforms: z.array(platformSchema).min(1),
   sigils: z.array(pointSchema).min(1),
+  seals: z.array(platformSchema),
   finish: pointSchema,
 });

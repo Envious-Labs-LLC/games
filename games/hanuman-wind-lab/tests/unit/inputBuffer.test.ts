@@ -7,7 +7,7 @@ import {
 } from "../../src/platform/inputBuffer";
 
 describe("movement input buffer", () => {
-  it("preserves quick jump and dash presses until a simulation step", () => {
+  it("preserves quick action presses until a simulation step", () => {
     let buffered = createInputBuffer();
     buffered = bufferInput(buffered, {
       ...emptyInput(),
@@ -15,15 +15,18 @@ describe("movement input buffer", () => {
       jumpHeld: true,
     });
     buffered = bufferInput(buffered, { ...emptyInput(), dashPressed: true });
+    buffered = bufferInput(buffered, { ...emptyInput(), formPressed: true });
 
     expect(consumeBufferedInput(buffered)).toMatchObject({
       jumpPressed: true,
       dashPressed: true,
+      formPressed: true,
       jumpHeld: false,
     });
     expect(consumeBufferedInput(buffered)).toMatchObject({
       jumpPressed: false,
       dashPressed: false,
+      formPressed: false,
     });
   });
 });

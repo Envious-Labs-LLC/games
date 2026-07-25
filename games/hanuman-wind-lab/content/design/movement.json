@@ -13,6 +13,13 @@
   "glideFallSpeed": 125,
   "dashSpeed": 760,
   "dashDuration": 0.14,
+  "mountainForm": {
+    "runSpeed": 235,
+    "jumpSpeed": 500,
+    "gravity": 2150,
+    "dashSpeed": 840,
+    "wallSlideSpeed": 165
+  },
   "wallSlideSpeed": 105,
   "wallJumpX": 410,
   "coyoteTime": 0.11,

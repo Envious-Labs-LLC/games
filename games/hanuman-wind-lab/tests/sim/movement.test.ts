@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { createGame, emptyInput, step, FIXED_DT, type GameState, type Input } from "../../src/sim/index";
+import {
+  createGame,
+  emptyInput,
+  step,
+  FIXED_DT,
+  PLAYER_HALF_WIDTH,
+  PLAYER_HEIGHT,
+  type GameState,
+  type Input,
+} from "../../src/sim/index";
 
 function runTicks(state: GameState, input: Input, ticks: number): GameState {
   let current = state;
@@ -21,6 +30,7 @@ describe("Hanuman Wind Lab movement", () => {
             jumpPressed: tick % 95 === 0,
             jumpHeld: tick % 95 < 28,
             dashPressed: tick % 127 === 40,
+            formPressed: tick % 211 === 80,
             restart: false,
           },
           FIXED_DT,
@@ -95,6 +105,296 @@ describe("Hanuman Wind Lab movement", () => {
     expect(state.player.onGround).toBe(false);
     expect(state.player.vy).toBeLessThan(0);
     expect(state.player.dashTimer).toBe(0);
+  });
+
+  it("shifts between wind and mountain forms", () => {
+    let state = createGame(32);
+    state = step(state, { ...emptyInput(), formPressed: true }, FIXED_DT);
+    expect(state.player.form).toBe("mountain");
+    expect(state.player.formShiftCount).toBe(1);
+    state = step(state, { ...emptyInput(), formPressed: true }, FIXED_DT);
+    expect(state.player.form).toBe("wind");
+    expect(state.player.formShiftCount).toBe(2);
+  });
+
+  it("keeps an active dash when changing form", () => {
+    let state = createGame(35);
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    state = step(state, { ...emptyInput(), formPressed: true }, FIXED_DT);
+    expect(state.player.form).toBe("mountain");
+    expect(state.player.dashTimer).toBeGreaterThan(0);
+  });
+
+  it("gives Mountain Form distinct movement weight", () => {
+    let windRun = createGame(36);
+    let mountainRun = createGame(36);
+    mountainRun.player.form = "mountain";
+    windRun = runTicks(windRun, { ...emptyInput(), moveX: 1 }, 30);
+    mountainRun = runTicks(
+      mountainRun,
+      { ...emptyInput(), moveX: 1 },
+      30,
+    );
+    expect(mountainRun.player.vx).toBeLessThan(windRun.player.vx);
+
+    let windJump = createGame(37);
+    let mountainJump = createGame(37);
+    mountainJump.player.form = "mountain";
+    windJump = step(
+      windJump,
+      { ...emptyInput(), jumpPressed: true },
+      FIXED_DT,
+    );
+    mountainJump = step(
+      mountainJump,
+      { ...emptyInput(), jumpPressed: true },
+      FIXED_DT,
+    );
+    expect(mountainJump.player.vy).toBeGreaterThan(windJump.player.vy);
+
+    let windFall = createGame(38);
+    let mountainFall = createGame(38);
+    for (const state of [windFall, mountainFall]) {
+      state.started = true;
+      state.player.y = 400;
+      state.player.vy = 100;
+      state.player.onGround = false;
+      state.player.coyoteTimer = 0;
+    }
+    mountainFall.player.form = "mountain";
+    windFall = step(windFall, emptyInput(), FIXED_DT);
+    mountainFall = step(mountainFall, emptyInput(), FIXED_DT);
+    expect(mountainFall.player.vy).toBeGreaterThan(windFall.player.vy);
+
+    let windDash = createGame(39);
+    let mountainDash = createGame(39);
+    mountainDash.player.form = "mountain";
+    windDash = step(
+      windDash,
+      { ...emptyInput(), dashPressed: true },
+      FIXED_DT,
+    );
+    mountainDash = step(
+      mountainDash,
+      { ...emptyInput(), dashPressed: true },
+      FIXED_DT,
+    );
+    expect(Math.abs(mountainDash.player.vx)).toBeGreaterThan(
+      Math.abs(windDash.player.vx),
+    );
+  });
+
+  it("allows Mountain Form to dash in the air", () => {
+    let state = createGame(40);
+    state.player.form = "mountain";
+    state.player.y = 400;
+    state.player.onGround = false;
+    state.player.dashAvailable = true;
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    expect(state.player.dashCount).toBe(1);
+    expect(state.player.dashTimer).toBeGreaterThan(0);
+    expect(state.player.dashAvailable).toBe(false);
+    expect(Math.abs(state.player.vx)).toBeGreaterThan(760);
+  });
+
+  it("reserves gliding for Wind Form", () => {
+    let windState = createGame(45);
+    let mountainState = createGame(45);
+    for (const state of [windState, mountainState]) {
+      state.started = true;
+      state.player.y = 400;
+      state.player.vy = 100;
+      state.player.onGround = false;
+      state.player.coyoteTimer = 0;
+    }
+    mountainState.player.form = "mountain";
+    windState = step(
+      windState,
+      { ...emptyInput(), jumpHeld: true },
+      FIXED_DT,
+    );
+    mountainState = step(
+      mountainState,
+      { ...emptyInput(), jumpHeld: true },
+      FIXED_DT,
+    );
+    expect(windState.player.gliding).toBe(true);
+    expect(mountainState.player.gliding).toBe(false);
+    expect(mountainState.player.vy).toBeGreaterThan(windState.player.vy);
+  });
+
+  it("makes Mountain Form wall-slide faster than Wind Form", () => {
+    const wallSlideSpeed = (
+      form: GameState["player"]["form"],
+      seed: number,
+    ): number => {
+      let state = createGame(seed);
+      const wall = state.platforms.find(
+        (platform) => platform.height > 200,
+      )!;
+      state.started = true;
+      state.player.form = form;
+      state.player.x = wall.x - PLAYER_HALF_WIDTH - 1;
+      state.player.y = wall.y + wall.height - 80;
+      state.player.vx = 200;
+      state.player.vy = 300;
+      state.player.onGround = false;
+      state.player.coyoteTimer = 0;
+      state = step(state, emptyInput(), FIXED_DT);
+      expect(state.player.wallSide).toBe(1);
+      return state.player.vy;
+    };
+    expect(wallSlideSpeed("mountain", 47)).toBeGreaterThan(
+      wallSlideSpeed("wind", 46),
+    );
+  });
+
+  it("blocks ordinary movement and Wind Form dashes at cracked seals", () => {
+    const windState = createGame(33);
+    const windSeal = windState.seals[0]!;
+    windState.player.x = windSeal.x - 16;
+    windState.player.y = 500;
+    windState.player.onGround = true;
+    step(windState, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    expect(windSeal.broken).toBe(false);
+    expect(windState.player.x).toBe(windSeal.x - 15);
+
+    const rightWindState = createGame(48);
+    const rightWindSeal = rightWindState.seals[0]!;
+    rightWindState.player.facing = -1;
+    rightWindState.player.x =
+      rightWindSeal.x + rightWindSeal.width + 16;
+    rightWindState.player.y = 500;
+    rightWindState.player.onGround = true;
+    step(
+      rightWindState,
+      { ...emptyInput(), dashPressed: true },
+      FIXED_DT,
+    );
+    expect(rightWindSeal.broken).toBe(false);
+    expect(rightWindState.player.x).toBe(
+      rightWindSeal.x + rightWindSeal.width + PLAYER_HALF_WIDTH,
+    );
+
+    let mountainWalk = createGame(34);
+    const walkSeal = mountainWalk.seals[0]!;
+    mountainWalk.player.form = "mountain";
+    mountainWalk.player.x = walkSeal.x - 16;
+    mountainWalk.player.y = 500;
+    mountainWalk.player.onGround = true;
+    mountainWalk = runTicks(
+      mountainWalk,
+      { ...emptyInput(), moveX: 1 },
+      10,
+    );
+    expect(walkSeal.broken).toBe(false);
+    expect(mountainWalk.player.x).toBe(walkSeal.x - PLAYER_HALF_WIDTH);
+  });
+
+  it("breaks cracked seals with Mountain dashes from either direction or in air", () => {
+    const mountainState = createGame(34);
+    const mountainSeal = mountainState.seals[0]!;
+    mountainState.player.x = mountainSeal.x - 16;
+    mountainState.player.y = 500;
+    mountainState.player.onGround = true;
+    mountainState.player.form = "mountain";
+    step(mountainState, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    expect(mountainSeal.broken).toBe(true);
+    expect(mountainState.player.x).toBeGreaterThan(mountainSeal.x - 16);
+
+    const rightState = createGame(41);
+    const rightSeal = rightState.seals[0]!;
+    rightState.player.form = "mountain";
+    rightState.player.facing = -1;
+    rightState.player.x = rightSeal.x + rightSeal.width + 16;
+    rightState.player.y = 500;
+    rightState.player.onGround = true;
+    step(rightState, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    expect(rightSeal.broken).toBe(true);
+
+    const airState = createGame(42);
+    const airSeal = airState.seals[0]!;
+    airState.player.form = "mountain";
+    airState.player.x = airSeal.x - 16;
+    airState.player.y = 420;
+    airState.player.onGround = false;
+    step(airState, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    expect(airSeal.broken).toBe(true);
+  });
+
+  it("breaks a seal on the final movement step of a Mountain dash", () => {
+    let state = createGame(43);
+    const seal = state.seals[0]!;
+    state.player.form = "mountain";
+    state.player.x =
+      seal.x -
+      PLAYER_HALF_WIDTH -
+      8 * 840 * FIXED_DT -
+      1;
+    state.player.y = 500;
+    state.player.onGround = true;
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    state = runTicks(state, emptyInput(), 8);
+    expect(state.player.dashTimer).toBe(0);
+    expect(seal.broken).toBe(true);
+  });
+
+  it("treats an unbroken seal as solid from above", () => {
+    let state = createGame(44);
+    const seal = state.seals[0]!;
+    state.started = true;
+    state.player.x = seal.x + seal.width * 0.5;
+    state.player.y = seal.y - 20;
+    state.player.vy = 300;
+    state.player.onGround = false;
+    state = runTicks(state, emptyInput(), 20);
+    expect(seal.broken).toBe(false);
+    expect(state.player.y).toBe(seal.y);
+  });
+
+  it("treats an unbroken seal as solid from below", () => {
+    let state = createGame(50);
+    const seal = state.seals[0]!;
+    state.started = true;
+    state.platforms = [];
+    state.player.x = seal.x + seal.width * 0.5;
+    state.player.y = seal.y + seal.height + PLAYER_HEIGHT + 1;
+    state.player.vy = -300;
+    state.player.onGround = false;
+    state = step(state, emptyInput(), FIXED_DT);
+    expect(seal.broken).toBe(false);
+    expect(state.player.y).toBe(
+      seal.y + seal.height + PLAYER_HEIGHT,
+    );
+    expect(state.player.vy).toBe(0);
+  });
+
+  it("removes vertical and horizontal collision after a seal breaks", () => {
+    let verticalState = createGame(49);
+    const verticalSeal = verticalState.seals[0]!;
+    verticalSeal.broken = true;
+    verticalState.started = true;
+    verticalState.player.x =
+      verticalSeal.x + verticalSeal.width * 0.5;
+    verticalState.player.y = verticalSeal.y - 20;
+    verticalState.player.vy = 300;
+    verticalState.player.onGround = false;
+    verticalState = runTicks(verticalState, emptyInput(), 20);
+    expect(verticalState.player.y).toBeGreaterThan(verticalSeal.y);
+
+    let horizontalState = createGame(51);
+    const horizontalSeal = horizontalState.seals[0]!;
+    horizontalSeal.broken = true;
+    horizontalState.started = true;
+    horizontalState.player.x =
+      horizontalSeal.x - PLAYER_HALF_WIDTH - 1;
+    horizontalState.player.y = 500;
+    horizontalState.player.vx = 300;
+    horizontalState.player.onGround = true;
+    horizontalState = step(horizontalState, emptyInput(), FIXED_DT);
+    expect(horizontalState.player.x).toBeGreaterThan(
+      horizontalSeal.x - PLAYER_HALF_WIDTH,
+    );
   });
 
   it("collects wind sigils and activates the finish shrine", () => {
