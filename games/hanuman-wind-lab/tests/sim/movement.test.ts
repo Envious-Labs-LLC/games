@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createGame,
   emptyInput,
+  findUsableWindAnchorIndex,
   step,
   FIXED_DT,
   PLAYER_HALF_WIDTH,
@@ -31,6 +32,7 @@ describe("Hanuman Wind Lab movement", () => {
             jumpHeld: tick % 95 < 28,
             dashPressed: tick % 127 === 40,
             formPressed: tick % 211 === 80,
+            vaultPressed: tick % 173 === 60,
             restart: false,
           },
           FIXED_DT,
@@ -39,6 +41,23 @@ describe("Hanuman Wind Lab movement", () => {
       return state;
     };
     expect(run()).toEqual(run());
+  });
+
+  it("repeats exactly when the input stream activates a wind anchor", () => {
+    const run = (): GameState => {
+      let state = createGame(60);
+      state.player.facing = -1;
+      state = step(
+        state,
+        { ...emptyInput(), vaultPressed: true },
+        FIXED_DT,
+      );
+      return runTicks(state, emptyInput(), 90);
+    };
+
+    const first = run();
+    expect(first.player.anchorUseCount).toBe(1);
+    expect(run()).toEqual(first);
   });
 
   it("jumps immediately and holding Space creates a higher leap", () => {
@@ -246,6 +265,148 @@ describe("Hanuman Wind Lab movement", () => {
     };
     expect(wallSlideSpeed("mountain", 47)).toBeGreaterThan(
       wallSlideSpeed("wind", 46),
+    );
+  });
+
+  it("launches from a nearby wind anchor toward movement input", () => {
+    let state = createGame(52);
+    state = step(
+      state,
+      { ...emptyInput(), moveX: 1, vaultPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.anchorUseCount).toBe(1);
+    expect(state.player.vx).toBeGreaterThan(500);
+    expect(state.player.vy).toBeLessThan(-600);
+    expect(state.player.onGround).toBe(false);
+    expect(state.player.dashAvailable).toBe(true);
+
+    let leftState = createGame(53);
+    leftState = step(
+      leftState,
+      { ...emptyInput(), moveX: -1, vaultPressed: true },
+      FIXED_DT,
+    );
+    expect(leftState.player.anchorUseCount).toBe(1);
+    expect(leftState.player.vx).toBeLessThan(-500);
+    expect(leftState.player.facing).toBe(-1);
+  });
+
+  it("chains a wind vault directly into an air dash", () => {
+    let state = createGame(54);
+    state = step(
+      state,
+      { ...emptyInput(), moveX: 1, vaultPressed: true },
+      FIXED_DT,
+    );
+    state = step(
+      state,
+      { ...emptyInput(), dashPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.anchorUseCount).toBe(1);
+    expect(state.player.dashCount).toBe(1);
+    expect(state.player.dashAvailable).toBe(false);
+  });
+
+  it("requires Wind Form, anchor range, and cooldown for a wind vault", () => {
+    let mountainState = createGame(55);
+    mountainState.player.form = "mountain";
+    mountainState = step(
+      mountainState,
+      { ...emptyInput(), vaultPressed: true },
+      FIXED_DT,
+    );
+    expect(mountainState.player.anchorUseCount).toBe(0);
+
+    let farState = createGame(56);
+    farState.player.x = 3500;
+    farState = step(
+      farState,
+      { ...emptyInput(), vaultPressed: true },
+      FIXED_DT,
+    );
+    expect(farState.player.anchorUseCount).toBe(0);
+
+    let cooldownState = createGame(57);
+    cooldownState = step(
+      cooldownState,
+      { ...emptyInput(), vaultPressed: true },
+      FIXED_DT,
+    );
+    cooldownState = step(
+      cooldownState,
+      { ...emptyInput(), vaultPressed: true },
+      FIXED_DT,
+    );
+    expect(cooldownState.player.anchorUseCount).toBe(1);
+  });
+
+  it("does not carry a Mountain vault press through a form change", () => {
+    let state = createGame(61);
+    state.player.form = "mountain";
+    state = step(
+      state,
+      { ...emptyInput(), formPressed: true, vaultPressed: true },
+      FIXED_DT,
+    );
+
+    expect(state.player.form).toBe("wind");
+    expect(state.player.anchorUseCount).toBe(0);
+  });
+
+  it("activates later anchors while airborne and becomes ready after cooldown", () => {
+    let state = createGame(58);
+    const laterAnchor = state.windAnchors[3]!;
+    state.player.x = laterAnchor.x;
+    state.player.y = laterAnchor.y + PLAYER_HEIGHT * 0.5;
+    state.player.onGround = false;
+    state.player.vy = 180;
+
+    expect(findUsableWindAnchorIndex(state)).toBe(3);
+    state = step(
+      state,
+      { ...emptyInput(), moveX: -1, vaultPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.usedWindAnchorIndices).toEqual([3]);
+    expect(findUsableWindAnchorIndex(state)).toBeNull();
+
+    state = runTicks(state, emptyInput(), 30);
+    state.player.x = laterAnchor.x;
+    state.player.y = laterAnchor.y + PLAYER_HEIGHT * 0.5;
+    state.player.onGround = false;
+    expect(findUsableWindAnchorIndex(state)).toBe(3);
+
+    state = step(
+      state,
+      { ...emptyInput(), moveX: 1, vaultPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.anchorUseCount).toBe(2);
+    expect(state.player.usedWindAnchorIndices).toEqual([3]);
+  });
+
+  it("supports every configured wind anchor", () => {
+    let state = createGame(59);
+
+    for (let index = 0; index < state.windAnchors.length; index += 1) {
+      const anchor = state.windAnchors[index]!;
+      state.player.x = anchor.x;
+      state.player.y = anchor.y + PLAYER_HEIGHT * 0.5;
+      state.player.onGround = false;
+      state.player.anchorCooldown = 0;
+      expect(findUsableWindAnchorIndex(state)).toBe(index);
+      state = step(
+        state,
+        { ...emptyInput(), moveX: 1, vaultPressed: true },
+        FIXED_DT,
+      );
+    }
+
+    expect(state.player.anchorUseCount).toBe(state.windAnchors.length);
+    expect(state.player.usedWindAnchorIndices).toEqual(
+      state.windAnchors.map((_, index) => index),
     );
   });
 

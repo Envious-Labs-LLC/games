@@ -14,6 +14,9 @@ let totalSigils = 0;
 let totalFalls = 0;
 let runsBreakingBothSeals = 0;
 let totalFormShifts = 0;
+let runsUsingWindAnchors = 0;
+let totalAnchorUses = 0;
+let runsUsingAllWindAnchors = 0;
 
 for (let index = 0; index < runs; index += 1) {
   try {
@@ -24,6 +27,11 @@ for (let index = 0; index < runs; index += 1) {
     totalFalls += result.falls;
     if (result.sealsBroken === 2) runsBreakingBothSeals += 1;
     totalFormShifts += result.formShifts;
+    if (result.anchorUses > 0) runsUsingWindAnchors += 1;
+    totalAnchorUses += result.anchorUses;
+    if (result.uniqueAnchorsUsed === result.totalAnchors) {
+      runsUsingAllWindAnchors += 1;
+    }
   } catch {
     crashes += 1;
   }
@@ -41,6 +49,17 @@ console.log(
     runsBreakingBothSeals,
     averageFormShifts:
       runs > 0 ? Number((totalFormShifts / runs).toFixed(2)) : 0,
+    runsUsingWindAnchors,
+    averageWindVaults:
+      runs > 0 ? Number((totalAnchorUses / runs).toFixed(2)) : 0,
+    runsUsingAllWindAnchors,
   }),
 );
-process.exit(crashes > 0 ? 1 : 0);
+process.exit(
+  crashes > 0 ||
+    timeouts > 0 ||
+    runsUsingWindAnchors !== runs ||
+    runsUsingAllWindAnchors !== runs
+    ? 1
+    : 0,
+);

@@ -2,12 +2,14 @@ import Phaser from "phaser";
 import {
   createGame,
   emptyInput,
+  findUsableWindAnchorIndex,
   step,
   FIXED_DT,
   type GameState,
   type Input,
   type Platform,
   type Seal,
+  type WindAnchor,
 } from "../sim/index";
 import {
   bufferInput,
@@ -85,7 +87,7 @@ class WindScene extends Phaser.Scene {
       .text(
         WIDTH / 2,
         HEIGHT - 18,
-        "MOVE  A / D    JUMP + GLIDE  SPACE    DASH  SHIFT    CHANGE FORM  E",
+        "MOVE A/D   JUMP + GLIDE SPACE   DASH SHIFT   FORM E   WIND VAULT Q",
         {
           fontFamily: "Arial, sans-serif",
           fontSize: "12px",
@@ -118,6 +120,7 @@ class WindScene extends Phaser.Scene {
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
       shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
       e: Phaser.Input.Keyboard.KeyCodes.E,
+      q: Phaser.Input.Keyboard.KeyCodes.Q,
       r: Phaser.Input.Keyboard.KeyCodes.R,
     }) as Record<string, Phaser.Input.Keyboard.Key>;
 
@@ -157,6 +160,7 @@ class WindScene extends Phaser.Scene {
     input.jumpHeld = this.keys.space!.isDown;
     input.dashPressed = Phaser.Input.Keyboard.JustDown(this.keys.shift!);
     input.formPressed = Phaser.Input.Keyboard.JustDown(this.keys.e!);
+    input.vaultPressed = Phaser.Input.Keyboard.JustDown(this.keys.q!);
     input.restart = Phaser.Input.Keyboard.JustDown(this.keys.r!);
     return input;
   }
@@ -208,6 +212,22 @@ class WindScene extends Phaser.Scene {
     for (const platform of this.state.platforms) drawPlatform(g, platform, this.cameraX, this.cameraY);
     for (const seal of this.state.seals) {
       if (!seal.broken) drawSeal(g, seal, this.cameraX, this.cameraY);
+    }
+    const usableAnchorIndex = findUsableWindAnchorIndex(this.state);
+    for (
+      let anchorIndex = 0;
+      anchorIndex < this.state.windAnchors.length;
+      anchorIndex += 1
+    ) {
+      const anchor = this.state.windAnchors[anchorIndex]!;
+      drawWindAnchor(
+        g,
+        anchor,
+        this.cameraX,
+        this.cameraY,
+        this.state.tick,
+        anchorIndex === usableAnchorIndex,
+      );
     }
 
     for (let index = 0; index < this.state.sigils.length; index += 1) {
@@ -277,8 +297,10 @@ class WindScene extends Phaser.Scene {
           ? 0xffb45b
           : burst.kind === "break"
             ? 0xffc15e
-            : burst.kind === "transform"
+          : burst.kind === "transform"
               ? 0xffe38b
+              : burst.kind === "anchor"
+                ? 0x92fbff
               : 0xc5fbff;
       g.lineStyle(burst.kind === "dash" ? 4 : 3, color, alpha);
       for (let index = 0; index < count; index += 1) {
@@ -315,7 +337,7 @@ class WindScene extends Phaser.Scene {
     g.fillRoundedRect(WIDTH - 178, 96, this.state.player.dashAvailable ? 143 : 0, 9, 4);
 
     this.statsText.setText(
-      `WIND SIGILS  ${collected} / ${this.state.sigils.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}\nFORM  ${this.state.player.form.toUpperCase()}`,
+      `WIND SIGILS  ${collected} / ${this.state.sigils.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}\nFORM  ${this.state.player.form.toUpperCase()}   VAULTS  ${this.state.player.anchorUseCount}`,
     );
 
     const centerMessage =
@@ -441,6 +463,28 @@ function drawSeal(
       y + offset + 4,
     );
   }
+}
+
+function drawWindAnchor(
+  g: Phaser.GameObjects.Graphics,
+  anchor: WindAnchor,
+  cameraX: number,
+  cameraY: number,
+  tick: number,
+  active: boolean,
+): void {
+  const x = anchor.x - cameraX;
+  const y = anchor.y - cameraY;
+  if (x < -70 || x > WIDTH + 70 || y < -70 || y > HEIGHT + 70) return;
+  const pulse = 1 + Math.sin(tick * 0.1 + anchor.x * 0.01) * 0.1;
+  g.fillStyle(active ? 0x9ffcff : 0x69cad7, active ? 0.2 : 0.1);
+  g.fillCircle(x, y, (active ? 34 : 27) * pulse);
+  g.lineStyle(active ? 5 : 3, active ? 0xd8ffff : 0x7de4ee, active ? 1 : 0.75);
+  g.strokeCircle(x, y, 15 * pulse);
+  g.beginPath();
+  g.arc(x, y, 8 * pulse, -0.7, Math.PI * 1.25, false);
+  g.strokePath();
+  g.lineBetween(x + 5, y + 7, x + 13, y + 14);
 }
 
 function drawPlatform(

@@ -15,7 +15,8 @@ export type BurstKind =
   | "sigil"
   | "fall"
   | "transform"
-  | "break";
+  | "break"
+  | "anchor";
 
 export interface Input {
   moveX: -1 | 0 | 1;
@@ -23,6 +24,7 @@ export interface Input {
   jumpHeld: boolean;
   dashPressed: boolean;
   formPressed: boolean;
+  vaultPressed: boolean;
   restart: boolean;
 }
 
@@ -41,6 +43,11 @@ export interface Sigil {
 
 export interface Seal extends Platform {
   broken: boolean;
+}
+
+export interface WindAnchor {
+  x: number;
+  y: number;
 }
 
 export interface Burst {
@@ -69,6 +76,9 @@ export interface Player {
   gliding: boolean;
   form: PlayerForm;
   formShiftCount: number;
+  anchorCooldown: number;
+  anchorUseCount: number;
+  usedWindAnchorIndices: number[];
 }
 
 export interface GameState {
@@ -84,6 +94,7 @@ export interface GameState {
   platforms: Platform[];
   sigils: Sigil[];
   seals: Seal[];
+  windAnchors: WindAnchor[];
   finish: { x: number; y: number };
   checkpoint: { x: number; y: number };
   falls: number;
@@ -99,6 +110,7 @@ export function emptyInput(): Input {
     jumpHeld: false,
     dashPressed: false,
     formPressed: false,
+    vaultPressed: false,
     restart: false,
   };
 }
@@ -130,10 +142,14 @@ export function createGame(seed: number): GameState {
       gliding: false,
       form: "wind",
       formShiftCount: 0,
+      anchorCooldown: 0,
+      anchorUseCount: 0,
+      usedWindAnchorIndices: [],
     },
     platforms: course.platforms.map((platform) => ({ ...platform })),
     sigils: course.sigils.map((sigil) => ({ ...sigil, collected: false })),
     seals: course.seals.map((seal) => ({ ...seal, broken: false })),
+    windAnchors: course.windAnchors.map((anchor) => ({ ...anchor })),
     finish: { ...course.finish },
     checkpoint: { x: 110, y: 500 },
     falls: 0,
@@ -158,7 +174,8 @@ export function step(state: GameState, input: Input, dt: number): GameState {
     input.jumpPressed ||
     input.jumpHeld ||
     input.dashPressed ||
-    input.formPressed;
+    input.formPressed ||
+    input.vaultPressed;
   if (!state.started && !isAction) return state;
   state.started = true;
   state.elapsed += dt;
@@ -180,7 +197,9 @@ export function step(state: GameState, input: Input, dt: number): GameState {
 
 function updatePlayer(state: GameState, input: Input, dt: number): void {
   const player = state.player;
+  const vaultFormEligible = player.form === "wind";
   if (input.moveX !== 0) player.facing = input.moveX;
+  player.anchorCooldown = Math.max(0, player.anchorCooldown - dt);
 
   if (input.formPressed) {
     player.form = player.form === "wind" ? "mountain" : "wind";
@@ -195,7 +214,15 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
   if (player.onGround) player.coyoteTimer = movement.coyoteTime;
   else player.coyoteTimer = Math.max(0, player.coyoteTimer - dt);
 
-  if (input.dashPressed && player.dashAvailable && player.dashTimer === 0) {
+  const vaulted =
+    vaultFormEligible && input.vaultPressed && tryWindVault(state, input);
+
+  if (
+    !vaulted &&
+    input.dashPressed &&
+    player.dashAvailable &&
+    player.dashTimer === 0
+  ) {
     const airborne = !player.onGround;
     player.dashTimer = movement.dashDuration;
     if (airborne) player.dashAvailable = false;
@@ -206,7 +233,11 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
   }
 
   const canGroundJump = player.onGround || player.coyoteTimer > 0;
-  if (player.jumpBufferTimer > 0 && (canGroundJump || player.wallSide !== 0)) {
+  if (
+    !vaulted &&
+    player.jumpBufferTimer > 0 &&
+    (canGroundJump || player.wallSide !== 0)
+  ) {
     if (player.wallSide !== 0 && !player.onGround) {
       player.vx = -player.wallSide * movement.wallJumpX;
       player.facing = player.wallSide === 1 ? -1 : 1;
@@ -279,6 +310,7 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
     player.wallSide = 0;
     player.dashAvailable = true;
     player.dashTimer = 0;
+    player.anchorCooldown = 0;
   }
 }
 
@@ -418,6 +450,57 @@ function collectSigils(state: GameState): void {
     }
     addBurst(state, "sigil", sigil.x, sigil.y, state.player.facing);
   }
+}
+
+function tryWindVault(state: GameState, input: Input): boolean {
+  const player = state.player;
+  const anchorIndex = findUsableWindAnchorIndex(state);
+  if (anchorIndex === null) return false;
+  const anchor = state.windAnchors[anchorIndex]!;
+
+  const direction = input.moveX === 0 ? player.facing : input.moveX;
+  player.facing = direction;
+  player.vx = direction * movement.windAnchor.launchX;
+  player.vy = -movement.windAnchor.launchY;
+  player.onGround = false;
+  player.coyoteTimer = 0;
+  player.jumpBufferTimer = 0;
+  player.jumpHoldTimer = 0;
+  player.gliding = false;
+  player.dashTimer = 0;
+  player.dashAvailable = true;
+  player.anchorCooldown = movement.windAnchor.cooldown;
+  player.anchorUseCount += 1;
+  if (!player.usedWindAnchorIndices.includes(anchorIndex)) {
+    player.usedWindAnchorIndices.push(anchorIndex);
+  }
+  addBurst(state, "anchor", anchor.x, anchor.y, direction);
+  return true;
+}
+
+export function findUsableWindAnchorIndex(state: GameState): number | null {
+  const player = state.player;
+  if (player.form !== "wind" || player.anchorCooldown > 0) return null;
+
+  const centerY = player.y - PLAYER_HEIGHT * 0.5;
+  const radiusSquared =
+    movement.windAnchor.radius * movement.windAnchor.radius;
+  let nearestIndex: number | null = null;
+  let nearestDistanceSquared = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < state.windAnchors.length; index += 1) {
+    const anchor = state.windAnchors[index]!;
+    const dx = anchor.x - player.x;
+    const dy = anchor.y - centerY;
+    const distanceSquared = dx * dx + dy * dy;
+    if (
+      distanceSquared <= radiusSquared &&
+      distanceSquared < nearestDistanceSquared
+    ) {
+      nearestIndex = index;
+      nearestDistanceSquared = distanceSquared;
+    }
+  }
+  return nearestIndex;
 }
 
 function findPlatformBelow(

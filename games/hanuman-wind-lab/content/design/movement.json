@@ -13,6 +13,12 @@
   "glideFallSpeed": 125,
   "dashSpeed": 760,
   "dashDuration": 0.14,
+  "windAnchor": {
+    "radius": 130,
+    "launchX": 540,
+    "launchY": 650,
+    "cooldown": 0.28
+  },
   "mountainForm": {
     "runSpeed": 235,
     "jumpSpeed": 500,

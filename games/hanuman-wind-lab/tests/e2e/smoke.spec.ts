@@ -14,6 +14,16 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
     .poll(() => page.evaluate(() => window.__WIND_STATE__?.status))
     .toBe("playing");
 
+  await page.keyboard.press("q");
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__WIND_STATE__.player.anchorUseCount),
+    )
+    .toBe(1);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.onGround))
+    .toBe(true);
+
   const startingX = await page.evaluate(() => window.__WIND_STATE__.player.x);
   await page.keyboard.down("d");
   await expect

@@ -1,4 +1,12 @@
-import { createGame, emptyInput, step, FIXED_DT, type GameStatus, type Input } from "../../src/sim/index";
+import {
+  createGame,
+  emptyInput,
+  findUsableWindAnchorIndex,
+  step,
+  FIXED_DT,
+  type GameStatus,
+  type Input,
+} from "../../src/sim/index";
 
 export interface BotResult {
   seed: number;
@@ -8,6 +16,9 @@ export interface BotResult {
   falls: number;
   sealsBroken: number;
   formShifts: number;
+  anchorUses: number;
+  uniqueAnchorsUsed: number;
+  totalAnchors: number;
 }
 
 export function runOne(seed: number, maxTicks = 12_000): BotResult {
@@ -48,6 +59,10 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
       (!wantsMountain &&
         state.player.form === "mountain" &&
         state.player.dashTimer === 0);
+    const usableAnchorIndex = findUsableWindAnchorIndex(state);
+    input.vaultPressed =
+      usableAnchorIndex !== null &&
+      !state.player.usedWindAnchorIndices.includes(usableAnchorIndex);
 
     input.jumpPressed =
       state.player.onGround && (approachingGap || approachingSigil || ticks % 90 === 0);
@@ -78,5 +93,8 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
     falls: state.falls,
     sealsBroken: state.seals.filter((seal) => seal.broken).length,
     formShifts: state.player.formShiftCount,
+    anchorUses: state.player.anchorUseCount,
+    uniqueAnchorsUsed: state.player.usedWindAnchorIndices.length,
+    totalAnchors: state.windAnchors.length,
   };
 }
