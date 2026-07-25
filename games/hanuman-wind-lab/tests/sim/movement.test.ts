@@ -8,6 +8,7 @@ import {
   FIXED_DT,
   PLAYER_HALF_WIDTH,
   PLAYER_HEIGHT,
+  SHADOW_SENTRY_WIDTH,
   type GameState,
   type Input,
 } from "../../src/sim/index";
@@ -48,11 +49,7 @@ describe("Hanuman Wind Lab movement", () => {
     const run = (): GameState => {
       let state = createGame(60);
       state.player.facing = -1;
-      state = step(
-        state,
-        { ...emptyInput(), powerPressed: true },
-        FIXED_DT,
-      );
+      state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
       return runTicks(state, emptyInput(), 90);
     };
 
@@ -68,11 +65,7 @@ describe("Hanuman Wind Lab movement", () => {
       state.player.x = 1060;
       state.player.y = 350;
       state.player.onGround = false;
-      state = step(
-        state,
-        { ...emptyInput(), powerPressed: true },
-        FIXED_DT,
-      );
+      state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
       return runTicks(state, emptyInput(), 30);
     };
 
@@ -171,21 +164,13 @@ describe("Hanuman Wind Lab movement", () => {
     let mountainRun = createGame(36);
     mountainRun.player.form = "mountain";
     windRun = runTicks(windRun, { ...emptyInput(), moveX: 1 }, 30);
-    mountainRun = runTicks(
-      mountainRun,
-      { ...emptyInput(), moveX: 1 },
-      30,
-    );
+    mountainRun = runTicks(mountainRun, { ...emptyInput(), moveX: 1 }, 30);
     expect(mountainRun.player.vx).toBeLessThan(windRun.player.vx);
 
     let windJump = createGame(37);
     let mountainJump = createGame(37);
     mountainJump.player.form = "mountain";
-    windJump = step(
-      windJump,
-      { ...emptyInput(), jumpPressed: true },
-      FIXED_DT,
-    );
+    windJump = step(windJump, { ...emptyInput(), jumpPressed: true }, FIXED_DT);
     mountainJump = step(
       mountainJump,
       { ...emptyInput(), jumpPressed: true },
@@ -210,11 +195,7 @@ describe("Hanuman Wind Lab movement", () => {
     let windDash = createGame(39);
     let mountainDash = createGame(39);
     mountainDash.player.form = "mountain";
-    windDash = step(
-      windDash,
-      { ...emptyInput(), dashPressed: true },
-      FIXED_DT,
-    );
+    windDash = step(windDash, { ...emptyInput(), dashPressed: true }, FIXED_DT);
     mountainDash = step(
       mountainDash,
       { ...emptyInput(), dashPressed: true },
@@ -249,11 +230,7 @@ describe("Hanuman Wind Lab movement", () => {
       state.player.coyoteTimer = 0;
     }
     mountainState.player.form = "mountain";
-    windState = step(
-      windState,
-      { ...emptyInput(), jumpHeld: true },
-      FIXED_DT,
-    );
+    windState = step(windState, { ...emptyInput(), jumpHeld: true }, FIXED_DT);
     mountainState = step(
       mountainState,
       { ...emptyInput(), jumpHeld: true },
@@ -270,9 +247,7 @@ describe("Hanuman Wind Lab movement", () => {
       seed: number,
     ): number => {
       let state = createGame(seed);
-      const wall = state.platforms.find(
-        (platform) => platform.height > 200,
-      )!;
+      const wall = state.platforms.find((platform) => platform.height > 200)!;
       state.started = true;
       state.player.form = form;
       state.player.x = wall.x - PLAYER_HALF_WIDTH - 1;
@@ -315,7 +290,9 @@ describe("Hanuman Wind Lab movement", () => {
     expect(state.player.vy).toBeGreaterThan(1000);
     expect(state.player.dashCount).toBe(0);
     expect(state.player.jumpBufferTimer).toBe(0);
-    expect(state.bursts.filter((burst) => burst.kind === "slam")).toHaveLength(1);
+    expect(state.bursts.filter((burst) => burst.kind === "slam")).toHaveLength(
+      1,
+    );
   });
 
   it("keeps the earth-slam committed until a single landing impact", () => {
@@ -324,11 +301,7 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.x = 1060;
     state.player.y = 350;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
     state = step(
       state,
       {
@@ -358,11 +331,7 @@ describe("Hanuman Wind Lab movement", () => {
       state.bursts.filter((burst) => burst.kind === "shockwave"),
     ).toHaveLength(1);
 
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
     expect(state.player.earthSlamStartCount).toBe(1);
     expect(state.player.earthSlamImpactCount).toBe(1);
   });
@@ -374,19 +343,15 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.x = seal.x - EARTH_SLAM_SHOCKWAVE_RADIUS;
     state.player.y = 340;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
     state = runTicks(state, emptyInput(), 4);
 
     expect(state.player.earthSlamImpactCount).toBe(1);
     expect(state.player.earthSlamSealBreakCount).toBe(1);
     expect(seal.broken).toBe(true);
-    expect(
-      state.bursts.filter((burst) => burst.kind === "break"),
-    ).toHaveLength(1);
+    expect(state.bursts.filter((burst) => burst.kind === "break")).toHaveLength(
+      1,
+    );
     expect(
       state.bursts.filter((burst) => burst.kind === "shockwave"),
     ).toHaveLength(1);
@@ -396,23 +361,18 @@ describe("Hanuman Wind Lab movement", () => {
     let state = createGame(76);
     const seal = state.seals[0]!;
     state.player.form = "mountain";
-    state.player.x =
-      seal.x - EARTH_SLAM_SHOCKWAVE_RADIUS - 1;
+    state.player.x = seal.x - EARTH_SLAM_SHOCKWAVE_RADIUS - 1;
     state.player.y = 340;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
     state = runTicks(state, emptyInput(), 4);
 
     expect(state.player.earthSlamImpactCount).toBe(1);
     expect(state.player.earthSlamSealBreakCount).toBe(0);
     expect(seal.broken).toBe(false);
-    expect(
-      state.bursts.filter((burst) => burst.kind === "break"),
-    ).toHaveLength(0);
+    expect(state.bursts.filter((burst) => burst.kind === "break")).toHaveLength(
+      0,
+    );
   });
 
   it("does not count already-shattered stone twice", () => {
@@ -423,18 +383,14 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.x = seal.x;
     state.player.y = 340;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
     state = runTicks(state, emptyInput(), 12);
 
     expect(state.player.earthSlamImpactCount).toBe(1);
     expect(state.player.earthSlamSealBreakCount).toBe(0);
-    expect(
-      state.bursts.filter((burst) => burst.kind === "break"),
-    ).toHaveLength(0);
+    expect(state.bursts.filter((burst) => burst.kind === "break")).toHaveLength(
+      0,
+    );
   });
 
   it("uses an earth-slam for one seal and a dash for the other", () => {
@@ -445,11 +401,7 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.x = firstSeal.x - EARTH_SLAM_SHOCKWAVE_RADIUS;
     state.player.y = 340;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
     state = runTicks(state, emptyInput(), 4);
 
     expect(firstSeal.broken).toBe(true);
@@ -463,11 +415,7 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.onGround = true;
     state.player.dashAvailable = true;
     state.player.dashTimer = 0;
-    state = step(
-      state,
-      { ...emptyInput(), dashPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
 
     expect(secondSeal.broken).toBe(true);
     expect(state.seals.filter((seal) => seal.broken)).toHaveLength(2);
@@ -502,18 +450,10 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.form = "mountain";
     state.player.y = 350;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), dashPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
     expect(state.player.dashTimer).toBeGreaterThan(0);
 
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
     expect(state.player.earthSlamming).toBe(true);
     expect(state.player.dashTimer).toBe(0);
     expect(state.player.vx).toBe(0);
@@ -528,11 +468,7 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.x = 700;
     state.player.y = state.worldHeight - 5;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
 
     expect(state.falls).toBe(1);
     expect(state.player.earthSlamming).toBe(false);
@@ -548,11 +484,7 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.form = "mountain";
     state.player.y = 350;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
     expect(state.player.earthSlamming).toBe(true);
 
     state = step(state, { ...emptyInput(), restart: true }, FIXED_DT);
@@ -604,11 +536,7 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.x = state.finish.x;
     state.player.y = 350;
     state.player.onGround = false;
-    state = step(
-      state,
-      { ...emptyInput(), powerPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
 
     expect(state.status).toBe("playing");
     expect(state.player.earthSlamming).toBe(true);
@@ -668,11 +596,7 @@ describe("Hanuman Wind Lab movement", () => {
       { ...emptyInput(), moveX: 1, powerPressed: true },
       FIXED_DT,
     );
-    state = step(
-      state,
-      { ...emptyInput(), dashPressed: true },
-      FIXED_DT,
-    );
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
     expect(state.player.anchorUseCount).toBe(1);
     expect(state.player.dashCount).toBe(1);
     expect(state.player.dashAvailable).toBe(false);
@@ -804,15 +728,10 @@ describe("Hanuman Wind Lab movement", () => {
     const rightWindState = createGame(48);
     const rightWindSeal = rightWindState.seals[0]!;
     rightWindState.player.facing = -1;
-    rightWindState.player.x =
-      rightWindSeal.x + rightWindSeal.width + 16;
+    rightWindState.player.x = rightWindSeal.x + rightWindSeal.width + 16;
     rightWindState.player.y = 500;
     rightWindState.player.onGround = true;
-    step(
-      rightWindState,
-      { ...emptyInput(), dashPressed: true },
-      FIXED_DT,
-    );
+    step(rightWindState, { ...emptyInput(), dashPressed: true }, FIXED_DT);
     expect(rightWindSeal.broken).toBe(false);
     expect(rightWindState.player.x).toBe(
       rightWindSeal.x + rightWindSeal.width + PLAYER_HALF_WIDTH,
@@ -824,11 +743,7 @@ describe("Hanuman Wind Lab movement", () => {
     mountainWalk.player.x = walkSeal.x - 16;
     mountainWalk.player.y = 500;
     mountainWalk.player.onGround = true;
-    mountainWalk = runTicks(
-      mountainWalk,
-      { ...emptyInput(), moveX: 1 },
-      10,
-    );
+    mountainWalk = runTicks(mountainWalk, { ...emptyInput(), moveX: 1 }, 10);
     expect(walkSeal.broken).toBe(false);
     expect(mountainWalk.player.x).toBe(walkSeal.x - PLAYER_HALF_WIDTH);
   });
@@ -869,11 +784,7 @@ describe("Hanuman Wind Lab movement", () => {
     let state = createGame(43);
     const seal = state.seals[0]!;
     state.player.form = "mountain";
-    state.player.x =
-      seal.x -
-      PLAYER_HALF_WIDTH -
-      8 * 840 * FIXED_DT -
-      1;
+    state.player.x = seal.x - PLAYER_HALF_WIDTH - 8 * 840 * FIXED_DT - 1;
     state.player.y = 500;
     state.player.onGround = true;
     state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
@@ -906,9 +817,7 @@ describe("Hanuman Wind Lab movement", () => {
     state.player.onGround = false;
     state = step(state, emptyInput(), FIXED_DT);
     expect(seal.broken).toBe(false);
-    expect(state.player.y).toBe(
-      seal.y + seal.height + PLAYER_HEIGHT,
-    );
+    expect(state.player.y).toBe(seal.y + seal.height + PLAYER_HEIGHT);
     expect(state.player.vy).toBe(0);
   });
 
@@ -917,8 +826,7 @@ describe("Hanuman Wind Lab movement", () => {
     const verticalSeal = verticalState.seals[0]!;
     verticalSeal.broken = true;
     verticalState.started = true;
-    verticalState.player.x =
-      verticalSeal.x + verticalSeal.width * 0.5;
+    verticalState.player.x = verticalSeal.x + verticalSeal.width * 0.5;
     verticalState.player.y = verticalSeal.y - 20;
     verticalState.player.vy = 300;
     verticalState.player.onGround = false;
@@ -929,8 +837,7 @@ describe("Hanuman Wind Lab movement", () => {
     const horizontalSeal = horizontalState.seals[0]!;
     horizontalSeal.broken = true;
     horizontalState.started = true;
-    horizontalState.player.x =
-      horizontalSeal.x - PLAYER_HALF_WIDTH - 1;
+    horizontalState.player.x = horizontalSeal.x - PLAYER_HALF_WIDTH - 1;
     horizontalState.player.y = 500;
     horizontalState.player.vx = 300;
     horizontalState.player.onGround = true;
@@ -959,5 +866,139 @@ describe("Hanuman Wind Lab movement", () => {
     expect(state.falls).toBe(1);
     expect(state.player.x).toBe(925);
     expect(state.player.y).toBe(360);
+  });
+
+  it("defeats a shadow sentry with a Mountain dash", () => {
+    let state = createGame(80);
+    const sentry = state.shadowSentries[0]!;
+    state.player.form = "mountain";
+    state.player.x =
+      sentry.x - SHADOW_SENTRY_WIDTH * 0.5 - PLAYER_HALF_WIDTH - 1;
+    state.player.y = sentry.y;
+    state.player.onGround = true;
+
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+
+    expect(sentry.defeated).toBe(true);
+    expect(state.player.sentryDashDefeatCount).toBe(1);
+    expect(state.player.sentryHitCount).toBe(0);
+  });
+
+  it("treats Wind dash contact as a sentry hit", () => {
+    let state = createGame(81);
+    const sentry = state.shadowSentries[0]!;
+    state.checkpoint = { x: 925, y: 360 };
+    state.player.x =
+      sentry.x - SHADOW_SENTRY_WIDTH * 0.5 - PLAYER_HALF_WIDTH - 1;
+    state.player.y = sentry.y;
+    state.player.onGround = true;
+
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+
+    expect(sentry.defeated).toBe(false);
+    expect(state.player.sentryHitCount).toBe(1);
+    expect(state.player.sentryDashDefeatCount).toBe(0);
+    expect(state.falls).toBe(0);
+    expect(state.player.x).toBe(925);
+    expect(state.player.y).toBe(360);
+  });
+
+  it("clears buffered jump input after a sentry hit", () => {
+    let state = createGame(87);
+    const sentry = state.shadowSentries[0]!;
+    state.checkpoint = { x: 925, y: 360 };
+    state.player.x = sentry.x;
+    state.player.y = sentry.y - 10;
+    state.player.onGround = false;
+    state.player.coyoteTimer = 0;
+
+    state = step(
+      state,
+      { ...emptyInput(), jumpPressed: true },
+      FIXED_DT,
+    );
+    expect(state.player.sentryHitCount).toBe(1);
+    expect(state.player.jumpBufferTimer).toBe(0);
+    expect(state.player.jumpHoldTimer).toBe(0);
+    expect(state.player.coyoteTimer).toBe(0);
+
+    state = step(state, emptyInput(), FIXED_DT);
+    expect(state.player.onGround).toBe(true);
+    expect(state.player.vy).toBe(0);
+    expect(state.player.y).toBe(360);
+  });
+
+  it("defeats a sentry at the earth-slam shockwave boundary", () => {
+    let state = createGame(82);
+    const sentry = state.shadowSentries[0]!;
+    state.shadowSentries[1]!.defeated = true;
+    state.player.form = "mountain";
+    state.player.x = 900;
+    state.player.y = 430;
+    state.player.onGround = false;
+    sentry.x =
+      state.player.x + EARTH_SLAM_SHOCKWAVE_RADIUS + SHADOW_SENTRY_WIDTH * 0.5;
+    sentry.y = 500;
+
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
+    state = runTicks(state, emptyInput(), 8);
+
+    expect(sentry.defeated).toBe(true);
+    expect(state.player.earthSlamSentryDefeatCount).toBe(1);
+    expect(state.player.sentryHitCount).toBe(0);
+  });
+
+  it("leaves a sentry active just outside the earth-slam shockwave", () => {
+    let state = createGame(83);
+    const sentry = state.shadowSentries[0]!;
+    state.shadowSentries[1]!.defeated = true;
+    state.player.form = "mountain";
+    state.player.x = 900;
+    state.player.y = 430;
+    state.player.onGround = false;
+    sentry.x =
+      state.player.x +
+      EARTH_SLAM_SHOCKWAVE_RADIUS +
+      SHADOW_SENTRY_WIDTH * 0.5 +
+      1;
+    sentry.y = 500;
+
+    state = step(state, { ...emptyInput(), powerPressed: true }, FIXED_DT);
+    state = runTicks(state, emptyInput(), 8);
+
+    expect(sentry.defeated).toBe(false);
+    expect(state.player.earthSlamSentryDefeatCount).toBe(0);
+    expect(state.player.sentryHitCount).toBe(0);
+  });
+
+  it("does not count an already defeated sentry twice", () => {
+    let state = createGame(84);
+    const sentry = state.shadowSentries[0]!;
+    sentry.defeated = true;
+    state.player.form = "mountain";
+    state.player.x = sentry.x;
+    state.player.y = sentry.y;
+    state.player.onGround = true;
+
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+
+    expect(state.player.sentryDashDefeatCount).toBe(0);
+    expect(state.player.sentryHitCount).toBe(0);
+  });
+
+  it("restores sentries and their counters on restart", () => {
+    let state = createGame(85);
+    state.shadowSentries[0]!.defeated = true;
+    state.player.sentryDashDefeatCount = 1;
+    state.player.earthSlamSentryDefeatCount = 1;
+    state.player.sentryHitCount = 2;
+
+    state = step(state, { ...emptyInput(), restart: true }, FIXED_DT);
+
+    expect(state.seed).toBe(86);
+    expect(state.shadowSentries.every((sentry) => !sentry.defeated)).toBe(true);
+    expect(state.player.sentryDashDefeatCount).toBe(0);
+    expect(state.player.earthSlamSentryDefeatCount).toBe(0);
+    expect(state.player.sentryHitCount).toBe(0);
   });
 });

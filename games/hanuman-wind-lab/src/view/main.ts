@@ -4,12 +4,15 @@ import {
   EARTH_SLAM_SHOCKWAVE_RADIUS,
   emptyInput,
   findUsableWindAnchorIndex,
+  SHADOW_SENTRY_HEIGHT,
+  SHADOW_SENTRY_WIDTH,
   step,
   FIXED_DT,
   type GameState,
   type Input,
   type Platform,
   type Seal,
+  type ShadowSentry,
   type WindAnchor,
 } from "../sim/index";
 import {
@@ -132,7 +135,11 @@ class WindScene extends Phaser.Scene {
     this.bufferedInput = bufferInput(this.bufferedInput, this.readInput());
     this.accumulator += Math.min(deltaMs, 50) / 1000;
     while (this.accumulator >= FIXED_DT) {
-      this.state = step(this.state, consumeBufferedInput(this.bufferedInput), FIXED_DT);
+      this.state = step(
+        this.state,
+        consumeBufferedInput(this.bufferedInput),
+        FIXED_DT,
+      );
       this.accumulator -= FIXED_DT;
     }
     window.__WIND_STATE__ = this.state;
@@ -190,8 +197,15 @@ class WindScene extends Phaser.Scene {
       g.fillStyle(color, 0.9);
       for (let x = -180; x < this.state.worldWidth + 300; x += 290) {
         const sx = x - this.cameraX * parallax;
-        const height = 120 + ((x / 10 + layer * 43) % 110 + 110) % 110;
-        g.fillTriangle(sx - 100, baseY, sx + 40, baseY - height, sx + 180, baseY);
+        const height = 120 + ((((x / 10 + layer * 43) % 110) + 110) % 110);
+        g.fillTriangle(
+          sx - 100,
+          baseY,
+          sx + 40,
+          baseY - height,
+          sx + 180,
+          baseY,
+        );
       }
     }
 
@@ -210,9 +224,21 @@ class WindScene extends Phaser.Scene {
     drawCloud(g, 610 - this.cameraX * 0.08, 170 - this.cameraY * 0.05, 0.78);
     drawCloud(g, 1120 - this.cameraX * 0.1, 105 - this.cameraY * 0.03, 1.2);
 
-    for (const platform of this.state.platforms) drawPlatform(g, platform, this.cameraX, this.cameraY);
+    for (const platform of this.state.platforms)
+      drawPlatform(g, platform, this.cameraX, this.cameraY);
     for (const seal of this.state.seals) {
       if (!seal.broken) drawSeal(g, seal, this.cameraX, this.cameraY);
+    }
+    for (const sentry of this.state.shadowSentries) {
+      if (!sentry.defeated) {
+        drawShadowSentry(
+          g,
+          sentry,
+          this.cameraX,
+          this.cameraY,
+          this.state.tick,
+        );
+      }
     }
     const usableAnchorIndex = findUsableWindAnchorIndex(this.state);
     for (
@@ -280,7 +306,13 @@ class WindScene extends Phaser.Scene {
 
     if (player.dashTimer > 0) {
       for (let trail = 4; trail >= 1; trail -= 1) {
-        drawHero(g, x - player.facing * trail * 22, y, player, 0.1 + (4 - trail) * 0.08);
+        drawHero(
+          g,
+          x - player.facing * trail * 22,
+          y,
+          player,
+          0.1 + (4 - trail) * 0.08,
+        );
       }
     }
     if (player.earthSlamming) {
@@ -313,31 +345,45 @@ class WindScene extends Phaser.Scene {
       }
       const count = burst.kind === "sigil" || burst.kind === "break" ? 12 : 7;
       const color =
-        burst.kind === "fall"
-          ? 0xffb45b
-          : burst.kind === "break"
-            ? 0xffc15e
-          : burst.kind === "transform"
-              ? 0xffe38b
-              : burst.kind === "anchor"
-                ? 0x92fbff
-                : burst.kind === "slam"
-                  ? 0xffc15e
-              : 0xc5fbff;
+        burst.kind === "hit"
+          ? 0xff5a70
+          : burst.kind === "defeat"
+            ? 0xc67cff
+            : burst.kind === "fall"
+              ? 0xffb45b
+              : burst.kind === "break"
+                ? 0xffc15e
+                : burst.kind === "transform"
+                  ? 0xffe38b
+                  : burst.kind === "anchor"
+                    ? 0x92fbff
+                    : burst.kind === "slam"
+                      ? 0xffc15e
+                      : 0xc5fbff;
       g.lineStyle(burst.kind === "dash" ? 4 : 3, color, alpha);
       for (let index = 0; index < count; index += 1) {
         const angle = (Math.PI * 2 * index) / count;
         const distance = (1 - alpha) * (burst.kind === "sigil" ? 75 : 42);
         const dx = Math.cos(angle) * distance;
         const dy = Math.sin(angle) * distance;
-        g.lineBetween(x + dx, y + dy, x + dx + Math.cos(angle) * 15, y + dy + Math.sin(angle) * 15);
+        g.lineBetween(
+          x + dx,
+          y + dy,
+          x + dx + Math.cos(angle) * 15,
+          y + dy + Math.sin(angle) * 15,
+        );
       }
     }
   }
 
   private drawUi(): void {
     const g = this.uiGraphics.clear();
-    const collected = this.state.sigils.filter((sigil) => sigil.collected).length;
+    const collected = this.state.sigils.filter(
+      (sigil) => sigil.collected,
+    ).length;
+    const sentriesDefeated = this.state.shadowSentries.filter(
+      (sentry) => sentry.defeated,
+    ).length;
 
     g.fillStyle(0x06131e, 0.82);
     g.fillRoundedRect(20, 18, 230, 72, 10);
@@ -356,10 +402,16 @@ class WindScene extends Phaser.Scene {
     g.fillStyle(0x071826, 0.8);
     g.fillRoundedRect(WIDTH - 188, 86, 163, 29, 8);
     g.fillStyle(this.state.player.dashAvailable ? 0x9ef6ff : 0x335463, 1);
-    g.fillRoundedRect(WIDTH - 178, 96, this.state.player.dashAvailable ? 143 : 0, 9, 4);
+    g.fillRoundedRect(
+      WIDTH - 178,
+      96,
+      this.state.player.dashAvailable ? 143 : 0,
+      9,
+      4,
+    );
 
     this.statsText.setText(
-      `WIND SIGILS  ${collected} / ${this.state.sigils.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}\nFORM  ${this.state.player.form.toUpperCase()}   VAULTS ${this.state.player.anchorUseCount}   SLAMS ${this.state.player.earthSlamImpactCount}`,
+      `WIND SIGILS  ${collected} / ${this.state.sigils.length}   SENTRIES ${sentriesDefeated} / ${this.state.shadowSentries.length}\nTIME  ${formatTime(this.state.elapsed)}   FALLS  ${this.state.falls}   HITS ${this.state.player.sentryHitCount}\nFORM  ${this.state.player.form.toUpperCase()}   VAULTS ${this.state.player.anchorUseCount}   SLAMS ${this.state.player.earthSlamImpactCount}`,
     );
 
     const nearCrackedStone = this.state.seals.some((seal) => {
@@ -378,9 +430,15 @@ class WindScene extends Phaser.Scene {
           ? "PRESS A / D TO BEGIN THE LEAP"
           : collected === this.state.sigils.length
             ? "ALL SIGILS FOUND. REACH THE GOLDEN SHRINE."
-            : nearCrackedStone
-              ? "CRACKED STONE\nMOUNTAIN: DASH OR JUMP, THEN Q"
-            : "";
+            : this.state.shadowSentries.some(
+                  (sentry) =>
+                    !sentry.defeated &&
+                    Math.abs(sentry.x - this.state.player.x) <= 220,
+                )
+              ? "SHADOW SENTRY\nEVADE OR USE MOUNTAIN DASH / SLAM"
+              : nearCrackedStone
+                ? "CRACKED STONE\nMOUNTAIN: DASH OR JUMP, THEN Q"
+                : "";
     this.centerText.setText(centerMessage);
     this.centerText.setVisible(centerMessage.length > 0);
 
@@ -389,6 +447,43 @@ class WindScene extends Phaser.Scene {
       g.fillRect(0, 0, WIDTH, HEIGHT);
     }
   }
+}
+
+function drawShadowSentry(
+  g: Phaser.GameObjects.Graphics,
+  sentry: ShadowSentry,
+  cameraX: number,
+  cameraY: number,
+  tick: number,
+): void {
+  const x = sentry.x - cameraX;
+  const y = sentry.y - cameraY;
+  if (x < -80 || x > WIDTH + 80) return;
+  const halfWidth = SHADOW_SENTRY_WIDTH * 0.5;
+  const headRadius = SHADOW_SENTRY_HEIGHT * 0.29;
+  const headY = y - SHADOW_SENTRY_HEIGHT * 0.74;
+  const pulse = 1 + Math.sin(tick * 0.12 + sentry.x) * 0.08;
+  g.fillStyle(0x702a99, 0.14);
+  g.fillCircle(
+    x,
+    y - SHADOW_SENTRY_HEIGHT * 0.52,
+    SHADOW_SENTRY_HEIGHT * 0.55 * pulse,
+  );
+  g.fillStyle(0x170d26, 0.96);
+  g.fillTriangle(
+    x - halfWidth,
+    y,
+    x,
+    y - SHADOW_SENTRY_HEIGHT,
+    x + halfWidth,
+    y,
+  );
+  g.fillCircle(x, headY, headRadius);
+  g.lineStyle(3, 0xb45ee8, 0.9);
+  g.strokeCircle(x, headY, headRadius * pulse);
+  g.fillStyle(0xff547f, 1);
+  g.fillCircle(x - halfWidth / 3, headY - 2, 3);
+  g.fillCircle(x + halfWidth / 3, headY - 2, 3);
 }
 
 function drawHero(
@@ -461,7 +556,8 @@ function drawHero(
     g.lineBetween(x - 9, y - 10, x - 17, y);
     g.lineBetween(x + 9, y - 10, x + 17, y);
   } else {
-    const stride = Math.sin(player.x * 0.08) * (Math.abs(player.vx) > 20 ? 8 : 2);
+    const stride =
+      Math.sin(player.x * 0.08) * (Math.abs(player.vx) > 20 ? 8 : 2);
     g.lineBetween(x - 9, y - 14, x - 12 - stride, y);
     g.lineBetween(x + 9, y - 14, x + 12 + stride, y);
   }
@@ -543,7 +639,12 @@ function drawPlatform(
   }
   g.lineStyle(2, 0x0c222b, 0.65);
   for (let offset = 26; offset < platform.width; offset += 72) {
-    g.lineBetween(x + offset, y + 16, x + offset + 17, y + Math.min(48, platform.height - 3));
+    g.lineBetween(
+      x + offset,
+      y + 16,
+      x + offset + 17,
+      y + Math.min(48, platform.height - 3),
+    );
   }
 }
 

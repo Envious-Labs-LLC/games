@@ -30,6 +30,10 @@
       "shockwaveRadius": 150
     }
   },
+  "shadowSentry": {
+    "width": 42,
+    "height": 66
+  },
   "wallSlideSpeed": 105,
   "wallJumpX": 410,
   "coyoteTime": 0.11,

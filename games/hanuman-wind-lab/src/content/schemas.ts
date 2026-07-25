@@ -34,13 +34,20 @@ export const movementSchema = z.object({
       shockwaveRadius: positiveNumber,
     }),
   }),
+  shadowSentry: z.object({
+    width: positiveNumber,
+    height: positiveNumber,
+  }),
   wallSlideSpeed: positiveNumber,
   wallJumpX: positiveNumber,
   coyoteTime: positiveNumber,
   jumpBufferTime: positiveNumber,
 });
 
-const pointSchema = z.object({ x: z.number().nonnegative(), y: z.number().nonnegative() });
+const pointSchema = z.object({
+  x: z.number().nonnegative(),
+  y: z.number().nonnegative(),
+});
 const platformSchema = pointSchema.extend({
   width: positiveNumber,
   height: positiveNumber,
@@ -51,5 +58,6 @@ export const courseSchema = z.object({
   sigils: z.array(pointSchema).min(1),
   seals: z.array(platformSchema),
   windAnchors: z.array(pointSchema).min(1),
+  shadowSentries: z.array(pointSchema).min(1),
   finish: pointSchema,
 });

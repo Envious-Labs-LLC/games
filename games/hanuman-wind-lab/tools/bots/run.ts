@@ -22,6 +22,10 @@ let totalEarthSlamImpacts = 0;
 let runsStartingEarthSlam = 0;
 let runsLandingEarthSlam = 0;
 let runsBreakingExactlyOneSealWithEarthSlam = 0;
+let runsDefeatingAllSentries = 0;
+let runsUsingDashOnSentry = 0;
+let runsUsingEarthSlamOnSentry = 0;
+let totalSentryHits = 0;
 
 for (let index = 0; index < runs; index += 1) {
   try {
@@ -44,6 +48,14 @@ for (let index = 0; index < runs; index += 1) {
     if (result.earthSlamSealBreaks === 1) {
       runsBreakingExactlyOneSealWithEarthSlam += 1;
     }
+    if (result.sentriesDefeated === result.totalSentries) {
+      runsDefeatingAllSentries += 1;
+    }
+    if (result.sentryDashDefeats > 0) runsUsingDashOnSentry += 1;
+    if (result.earthSlamSentryDefeats > 0) {
+      runsUsingEarthSlamOnSentry += 1;
+    }
+    totalSentryHits += result.sentryHits;
   } catch {
     crashes += 1;
   }
@@ -68,6 +80,10 @@ console.log(
     runsStartingEarthSlam,
     runsLandingEarthSlam,
     runsBreakingExactlyOneSealWithEarthSlam,
+    runsDefeatingAllSentries,
+    runsUsingDashOnSentry,
+    runsUsingEarthSlamOnSentry,
+    totalSentryHits,
     averageEarthSlams:
       runs > 0 ? Number((totalEarthSlamImpacts / runs).toFixed(2)) : 0,
   }),
@@ -81,6 +97,10 @@ process.exit(
     runsStartingEarthSlam !== runs ||
     runsLandingEarthSlam !== runs ||
     runsBreakingExactlyOneSealWithEarthSlam !== runs ||
+    runsDefeatingAllSentries !== runs ||
+    runsUsingDashOnSentry !== runs ||
+    runsUsingEarthSlamOnSentry !== runs ||
+    totalSentryHits !== 0 ||
     totalEarthSlamStarts !== totalEarthSlamImpacts
     ? 1
     : 0,

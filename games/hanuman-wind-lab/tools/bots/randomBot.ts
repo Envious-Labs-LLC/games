@@ -22,6 +22,11 @@ export interface BotResult {
   earthSlamStarts: number;
   earthSlamImpacts: number;
   earthSlamSealBreaks: number;
+  sentriesDefeated: number;
+  totalSentries: number;
+  sentryDashDefeats: number;
+  earthSlamSentryDefeats: number;
+  sentryHits: number;
 }
 
 export function runOne(seed: number, maxTicks = 12_000): BotResult {
@@ -31,15 +36,18 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
 
   for (; ticks < maxTicks && state.status === "playing"; ticks += 1) {
     const nextSigil = state.sigils.find((sigil) => !sigil.collected);
+    const pendingSentry = state.shadowSentries.find(
+      (sentry) => !sentry.defeated,
+    );
+    const progressTarget = pendingSentry ?? nextSigil;
     const targetDirection: -1 | 1 =
-      nextSigil && nextSigil.x < state.player.x - 25 ? -1 : 1;
+      progressTarget && progressTarget.x < state.player.x - 25 ? -1 : 1;
     const input: Input = {
       ...emptyInput(),
       moveX: ticks < wallKickUntil ? -1 : targetDirection,
     };
     const approachingSigil =
-      nextSigil !== undefined &&
-      Math.abs(nextSigil.x - state.player.x) < 135;
+      nextSigil !== undefined && Math.abs(nextSigil.x - state.player.x) < 135;
     const approachingGap =
       (state.player.x > 535 && state.player.x < 645) ||
       (state.player.x > 1780 && state.player.x < 1865) ||
@@ -56,12 +64,21 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
         : nextSeal.x - state.player.x;
     const approachingSeal =
       targetDirection === 1 && sealDistance > -40 && sealDistance < 150;
+    const sentryDistance =
+      pendingSentry === undefined
+        ? Number.POSITIVE_INFINITY
+        : pendingSentry.x - state.player.x;
+    const approachingSentry = Math.abs(sentryDistance) < 165;
     const wantsSafeSlam =
       state.player.earthSlamImpactCount === 0 &&
       state.sigils[1]?.collected === true &&
       state.player.x > 1000 &&
       state.player.x < 1100;
-    const wantsMountain = approachingSeal || wantsSafeSlam;
+    const wantsSentrySlam =
+      approachingSentry &&
+      state.player.y > 450 &&
+      state.player.earthSlamStartCount === 1;
+    const wantsMountain = approachingSeal || approachingSentry || wantsSafeSlam;
 
     input.formPressed =
       (wantsMountain && state.player.form === "wind") ||
@@ -70,11 +87,11 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
         state.player.dashTimer === 0);
     const usableAnchorIndex = findUsableWindAnchorIndex(state);
     const shouldStartEarthSlam =
-      wantsSafeSlam &&
+      (wantsSafeSlam || wantsSentrySlam) &&
       state.player.form === "mountain" &&
       !state.player.onGround &&
       !state.player.earthSlamming &&
-      state.player.earthSlamStartCount === 0;
+      (!wantsSafeSlam || state.player.earthSlamImpactCount === 0);
     input.powerPressed =
       usableAnchorIndex !== null &&
       !state.player.usedWindAnchorIndices.includes(usableAnchorIndex);
@@ -83,10 +100,15 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
     input.jumpPressed =
       state.player.onGround &&
       (wantsSafeSlam ||
+        wantsSentrySlam ||
         approachingGap ||
         approachingSigil ||
         ticks % 90 === 0);
-    if (state.player.wallSide !== 0 && !state.player.onGround && ticks % 7 === 0) {
+    if (
+      state.player.wallSide !== 0 &&
+      !state.player.onGround &&
+      ticks % 7 === 0
+    ) {
       input.jumpPressed = true;
       wallKickUntil = ticks + 9;
     }
@@ -96,8 +118,14 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
       state.player.earthSlamImpactCount > 0 &&
       state.player.dashAvailable &&
       (state.player.form === "mountain" || input.formPressed);
+    const shouldSmashSentry =
+      approachingSentry &&
+      state.player.earthSlamStartCount > 1 &&
+      state.player.dashAvailable &&
+      (state.player.form === "mountain" || input.formPressed);
     input.dashPressed =
       shouldSmashSeal ||
+      shouldSmashSentry ||
       (!state.player.onGround &&
         state.player.dashAvailable &&
         !climbingWall &&
@@ -120,5 +148,11 @@ export function runOne(seed: number, maxTicks = 12_000): BotResult {
     earthSlamStarts: state.player.earthSlamStartCount,
     earthSlamImpacts: state.player.earthSlamImpactCount,
     earthSlamSealBreaks: state.player.earthSlamSealBreakCount,
+    sentriesDefeated: state.shadowSentries.filter((sentry) => sentry.defeated)
+      .length,
+    totalSentries: state.shadowSentries.length,
+    sentryDashDefeats: state.player.sentryDashDefeatCount,
+    earthSlamSentryDefeats: state.player.earthSlamSentryDefeatCount,
+    sentryHits: state.player.sentryHitCount,
   };
 }

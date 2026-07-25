@@ -7,6 +7,8 @@ export const PLAYER_HALF_WIDTH = 15;
 export const PLAYER_HEIGHT = 48;
 export const EARTH_SLAM_SHOCKWAVE_RADIUS =
   movement.mountainForm.earthSlam.shockwaveRadius;
+export const SHADOW_SENTRY_WIDTH = movement.shadowSentry.width;
+export const SHADOW_SENTRY_HEIGHT = movement.shadowSentry.height;
 
 export type GameStatus = "playing" | "won";
 export type PlayerForm = "wind" | "mountain";
@@ -20,7 +22,9 @@ export type BurstKind =
   | "break"
   | "anchor"
   | "slam"
-  | "shockwave";
+  | "shockwave"
+  | "defeat"
+  | "hit";
 
 export interface Input {
   moveX: -1 | 0 | 1;
@@ -52,6 +56,12 @@ export interface Seal extends Platform {
 export interface WindAnchor {
   x: number;
   y: number;
+}
+
+export interface ShadowSentry {
+  x: number;
+  y: number;
+  defeated: boolean;
 }
 
 export interface Burst {
@@ -87,6 +97,9 @@ export interface Player {
   earthSlamStartCount: number;
   earthSlamImpactCount: number;
   earthSlamSealBreakCount: number;
+  earthSlamSentryDefeatCount: number;
+  sentryDashDefeatCount: number;
+  sentryHitCount: number;
 }
 
 export interface GameState {
@@ -103,6 +116,7 @@ export interface GameState {
   sigils: Sigil[];
   seals: Seal[];
   windAnchors: WindAnchor[];
+  shadowSentries: ShadowSentry[];
   finish: { x: number; y: number };
   checkpoint: { x: number; y: number };
   falls: number;
@@ -157,11 +171,18 @@ export function createGame(seed: number): GameState {
       earthSlamStartCount: 0,
       earthSlamImpactCount: 0,
       earthSlamSealBreakCount: 0,
+      earthSlamSentryDefeatCount: 0,
+      sentryDashDefeatCount: 0,
+      sentryHitCount: 0,
     },
     platforms: course.platforms.map((platform) => ({ ...platform })),
     sigils: course.sigils.map((sigil) => ({ ...sigil, collected: false })),
     seals: course.seals.map((seal) => ({ ...seal, broken: false })),
     windAnchors: course.windAnchors.map((anchor) => ({ ...anchor })),
+    shadowSentries: course.shadowSentries.map((sentry) => ({
+      ...sentry,
+      defeated: false,
+    })),
     finish: { ...course.finish },
     checkpoint: { x: 110, y: 500 },
     falls: 0,
@@ -323,33 +344,34 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
         : movement.gravity;
     const gravity = player.gliding ? baseGravity * 0.2 : baseGravity;
     player.vy = Math.min(player.vy + gravity * dt, movement.maxFallSpeed);
-    if (player.gliding) player.vy = Math.min(player.vy, movement.glideFallSpeed);
+    if (player.gliding)
+      player.vy = Math.min(player.vy, movement.glideFallSpeed);
   }
 
-  moveAndCollide(state, dt);
+  const mountainDashing = player.form === "mountain" && player.dashTimer > 0;
+  moveAndCollide(state, dt, mountainDashing);
   player.dashTimer = Math.max(0, player.dashTimer - dt);
 
   if (player.y > state.worldHeight) {
     state.falls += 1;
     addBurst(state, "fall", player.x, state.worldHeight - 12, player.facing);
-    player.x = state.checkpoint.x;
-    player.y = state.checkpoint.y;
-    player.vx = 0;
-    player.vy = 0;
-    player.onGround = true;
-    player.wallSide = 0;
-    player.dashAvailable = true;
-    player.dashTimer = 0;
-    player.anchorCooldown = 0;
-    player.earthSlamming = false;
+    resetPlayerToCheckpoint(state);
   }
 }
 
-function moveAndCollide(state: GameState, dt: number): void {
+function moveAndCollide(
+  state: GameState,
+  dt: number,
+  mountainDashing: boolean,
+): void {
   const player = state.player;
   const previousX = player.x;
   const previousY = player.y;
-  let nextX = clamp(previousX + player.vx * dt, PLAYER_HALF_WIDTH, state.worldWidth - PLAYER_HALF_WIDTH);
+  let nextX = clamp(
+    previousX + player.vx * dt,
+    PLAYER_HALF_WIDTH,
+    state.worldWidth - PLAYER_HALF_WIDTH,
+  );
   player.wallSide = 0;
 
   for (const platform of state.platforms) {
@@ -360,7 +382,11 @@ function moveAndCollide(state: GameState, dt: number): void {
     const previousLeft = previousX - PLAYER_HALF_WIDTH;
     const nextLeft = nextX - PLAYER_HALF_WIDTH;
 
-    if (player.vx > 0 && previousRight <= platform.x && nextRight >= platform.x) {
+    if (
+      player.vx > 0 &&
+      previousRight <= platform.x &&
+      nextRight >= platform.x
+    ) {
       nextX = platform.x - PLAYER_HALF_WIDTH;
       player.vx = 0;
       player.wallSide = 1;
@@ -431,7 +457,10 @@ function moveAndCollide(state: GameState, dt: number): void {
         previousTop >= platformBottom &&
         nextTop <= platformBottom
       ) {
-        ceilingY = ceilingY === null ? platformBottom : Math.max(ceilingY, platformBottom);
+        ceilingY =
+          ceilingY === null
+            ? platformBottom
+            : Math.max(ceilingY, platformBottom);
       }
     }
   }
@@ -449,6 +478,7 @@ function moveAndCollide(state: GameState, dt: number): void {
         player.earthSlamming = false;
         player.earthSlamImpactCount += 1;
         player.earthSlamSealBreakCount += breakSealsFromEarthSlam(state);
+        player.earthSlamSentryDefeatCount += defeatSentriesFromEarthSlam(state);
         addBurst(state, "shockwave", player.x, player.y, player.facing);
       } else {
         addBurst(state, "land", player.x, player.y, player.facing);
@@ -471,6 +501,8 @@ function moveAndCollide(state: GameState, dt: number): void {
     player.vy = wallSlideSpeed;
     player.dashAvailable = true;
   }
+
+  resolveShadowSentryContacts(state, previousX, mountainDashing);
 }
 
 function collectSigils(state: GameState): void {
@@ -482,10 +514,18 @@ function collectSigils(state: GameState): void {
 
     sigil.collected = true;
     state.player.dashAvailable = true;
-    const checkpointPlatform = findPlatformBelow(state.platforms, sigil.x, sigil.y);
+    const checkpointPlatform = findPlatformBelow(
+      state.platforms,
+      sigil.x,
+      sigil.y,
+    );
     if (checkpointPlatform) {
       state.checkpoint = {
-        x: clamp(sigil.x, checkpointPlatform.x + 25, checkpointPlatform.x + checkpointPlatform.width - 25),
+        x: clamp(
+          sigil.x,
+          checkpointPlatform.x + 25,
+          checkpointPlatform.x + checkpointPlatform.width - 25,
+        ),
         y: checkpointPlatform.y,
       };
     }
@@ -521,11 +561,7 @@ function tryWindVault(state: GameState, input: Input): boolean {
 
 function tryEarthSlam(state: GameState): boolean {
   const player = state.player;
-  if (
-    player.form !== "mountain" ||
-    player.onGround ||
-    player.earthSlamming
-  ) {
+  if (player.form !== "mountain" || player.onGround || player.earthSlamming) {
     return false;
   }
 
@@ -537,7 +573,13 @@ function tryEarthSlam(state: GameState): boolean {
   player.jumpBufferTimer = 0;
   player.jumpHoldTimer = 0;
   player.dashTimer = 0;
-  addBurst(state, "slam", player.x, player.y - PLAYER_HEIGHT * 0.5, player.facing);
+  addBurst(
+    state,
+    "slam",
+    player.x,
+    player.y - PLAYER_HEIGHT * 0.5,
+    player.facing,
+  );
   return true;
 }
 
@@ -570,13 +612,121 @@ function breakSealsFromEarthSlam(state: GameState): number {
   return brokenCount;
 }
 
+function defeatSentriesFromEarthSlam(state: GameState): number {
+  let defeatedCount = 0;
+  for (const sentry of state.shadowSentries) {
+    if (
+      sentry.defeated ||
+      distanceSquaredToSentry(state.player.x, state.player.y, sentry) >
+        EARTH_SLAM_SHOCKWAVE_RADIUS * EARTH_SLAM_SHOCKWAVE_RADIUS
+    ) {
+      continue;
+    }
+    sentry.defeated = true;
+    defeatedCount += 1;
+    addBurst(
+      state,
+      "defeat",
+      sentry.x,
+      sentry.y - SHADOW_SENTRY_HEIGHT * 0.5,
+      state.player.facing,
+    );
+  }
+  return defeatedCount;
+}
+
+function resolveShadowSentryContacts(
+  state: GameState,
+  previousX: number,
+  mountainDashing: boolean,
+): void {
+  const player = state.player;
+  for (const sentry of state.shadowSentries) {
+    if (sentry.defeated || !playerOverlapsSentry(player, previousX, sentry)) {
+      continue;
+    }
+
+    if (mountainDashing) {
+      sentry.defeated = true;
+      player.sentryDashDefeatCount += 1;
+      addBurst(
+        state,
+        "defeat",
+        sentry.x,
+        sentry.y - SHADOW_SENTRY_HEIGHT * 0.5,
+        player.facing,
+      );
+      continue;
+    }
+
+    player.sentryHitCount += 1;
+    addBurst(
+      state,
+      "hit",
+      player.x,
+      player.y - PLAYER_HEIGHT * 0.5,
+      player.facing,
+    );
+    resetPlayerToCheckpoint(state);
+    return;
+  }
+}
+
+function playerOverlapsSentry(
+  player: Player,
+  previousX: number,
+  sentry: ShadowSentry,
+): boolean {
+  const left = sentry.x - SHADOW_SENTRY_WIDTH * 0.5;
+  const right = sentry.x + SHADOW_SENTRY_WIDTH * 0.5;
+  const sweptLeft = Math.min(previousX, player.x) - PLAYER_HALF_WIDTH;
+  const sweptRight = Math.max(previousX, player.x) + PLAYER_HALF_WIDTH;
+  const verticalOverlap =
+    player.y > sentry.y - SHADOW_SENTRY_HEIGHT &&
+    player.y - PLAYER_HEIGHT < sentry.y;
+  return sweptRight > left && sweptLeft < right && verticalOverlap;
+}
+
+function distanceSquaredToSentry(
+  x: number,
+  y: number,
+  sentry: ShadowSentry,
+): number {
+  const closestX = clamp(
+    x,
+    sentry.x - SHADOW_SENTRY_WIDTH * 0.5,
+    sentry.x + SHADOW_SENTRY_WIDTH * 0.5,
+  );
+  const closestY = clamp(y, sentry.y - SHADOW_SENTRY_HEIGHT, sentry.y);
+  const dx = x - closestX;
+  const dy = y - closestY;
+  return dx * dx + dy * dy;
+}
+
+function resetPlayerToCheckpoint(state: GameState): void {
+  const player = state.player;
+  player.x = state.checkpoint.x;
+  player.y = state.checkpoint.y;
+  player.vx = 0;
+  player.vy = 0;
+  player.onGround = true;
+  player.wallSide = 0;
+  player.dashAvailable = true;
+  player.dashTimer = 0;
+  player.anchorCooldown = 0;
+  player.earthSlamming = false;
+  player.gliding = false;
+  player.jumpBufferTimer = 0;
+  player.jumpHoldTimer = 0;
+  player.coyoteTimer = 0;
+}
+
 export function findUsableWindAnchorIndex(state: GameState): number | null {
   const player = state.player;
   if (player.form !== "wind" || player.anchorCooldown > 0) return null;
 
   const centerY = player.y - PLAYER_HEIGHT * 0.5;
-  const radiusSquared =
-    movement.windAnchor.radius * movement.windAnchor.radius;
+  const radiusSquared = movement.windAnchor.radius * movement.windAnchor.radius;
   let nearestIndex: number | null = null;
   let nearestDistanceSquared = Number.POSITIVE_INFINITY;
   for (let index = 0; index < state.windAnchors.length; index += 1) {
@@ -601,12 +751,18 @@ function findPlatformBelow(
   y: number,
 ): Platform | undefined {
   return platforms
-    .filter((platform) => x >= platform.x && x <= platform.x + platform.width && platform.y >= y)
+    .filter(
+      (platform) =>
+        x >= platform.x && x <= platform.x + platform.width && platform.y >= y,
+    )
     .sort((a, b) => a.y - b.y)[0];
 }
 
 function verticalOverlap(playerY: number, platform: Platform): boolean {
-  return playerY > platform.y && playerY - PLAYER_HEIGHT < platform.y + platform.height;
+  return (
+    playerY > platform.y &&
+    playerY - PLAYER_HEIGHT < platform.y + platform.height
+  );
 }
 
 function horizontalOverlap(playerX: number, platform: Platform): boolean {
