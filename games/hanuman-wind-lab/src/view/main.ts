@@ -84,7 +84,7 @@ class WindScene extends Phaser.Scene {
       .text(
         WIDTH / 2,
         HEIGHT - 18,
-        "MOVE  A / D    JUMP + GLIDE  SPACE    AIR DASH  SHIFT    WALL JUMP  SPACE",
+        "MOVE  A / D    JUMP + GLIDE  SPACE    DASH  SHIFT    WALL JUMP  SPACE",
         {
           fontFamily: "Arial, sans-serif",
           fontSize: "12px",

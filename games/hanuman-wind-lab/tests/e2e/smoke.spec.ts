@@ -21,6 +21,14 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
     .toBeGreaterThan(startingX + 10);
   await page.keyboard.up("d");
 
+  await page.keyboard.press("Shift");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.dashCount))
+    .toBe(1);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.dashTimer))
+    .toBe(0);
+
   await page.keyboard.press("Space");
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__.player.onGround))
@@ -28,7 +36,7 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
 
   await page.keyboard.press("Shift");
   await expect
-    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.dashAvailable))
-    .toBe(false);
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.dashCount))
+    .toBe(2);
   expect(errors).toEqual([]);
 });

@@ -15,7 +15,7 @@ and vertical traversal.
 - Jump: Space
 - Higher leap: hold Space while rising
 - Glide: hold Space while falling
-- Air dash: Shift
+- Ground or air dash: Shift
 - Wall jump: press Space while touching a wall
 - Restart: R
 

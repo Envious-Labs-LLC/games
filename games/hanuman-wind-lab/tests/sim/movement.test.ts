@@ -75,6 +75,28 @@ describe("Hanuman Wind Lab movement", () => {
     expect(state.player.dashAvailable).toBe(true);
   });
 
+  it("dashes immediately while on the ground", () => {
+    let state = createGame(30);
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    expect(state.player.dashCount).toBe(1);
+    expect(state.player.dashTimer).toBeGreaterThan(0);
+    expect(Math.abs(state.player.vx)).toBeGreaterThan(600);
+    expect(state.player.onGround).toBe(true);
+  });
+
+  it("can jump out of a ground dash", () => {
+    let state = createGame(31);
+    state = step(state, { ...emptyInput(), dashPressed: true }, FIXED_DT);
+    state = step(
+      state,
+      { ...emptyInput(), jumpPressed: true, jumpHeld: true },
+      FIXED_DT,
+    );
+    expect(state.player.onGround).toBe(false);
+    expect(state.player.vy).toBeLessThan(0);
+    expect(state.player.dashTimer).toBe(0);
+  });
+
   it("collects wind sigils and activates the finish shrine", () => {
     let state = createGame(4);
     state.started = true;

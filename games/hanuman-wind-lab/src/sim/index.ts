@@ -49,6 +49,7 @@ export interface Player {
   wallSide: -1 | 0 | 1;
   dashAvailable: boolean;
   dashTimer: number;
+  dashCount: number;
   jumpHoldTimer: number;
   coyoteTimer: number;
   jumpBufferTimer: number;
@@ -105,6 +106,7 @@ export function createGame(seed: number): GameState {
       wallSide: 0,
       dashAvailable: true,
       dashTimer: 0,
+      dashCount: 0,
       jumpHoldTimer: 0,
       coyoteTimer: movement.coyoteTime,
       jumpBufferTimer: 0,
@@ -162,9 +164,11 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
   if (player.onGround) player.coyoteTimer = movement.coyoteTime;
   else player.coyoteTimer = Math.max(0, player.coyoteTimer - dt);
 
-  if (input.dashPressed && player.dashAvailable && !player.onGround) {
+  if (input.dashPressed && player.dashAvailable && player.dashTimer === 0) {
+    const airborne = !player.onGround;
     player.dashTimer = movement.dashDuration;
-    player.dashAvailable = false;
+    if (airborne) player.dashAvailable = false;
+    player.dashCount += 1;
     player.vx = player.facing * movement.dashSpeed;
     player.vy = 0;
     addBurst(state, "dash", player.x, player.y - 24, player.facing);
@@ -182,6 +186,7 @@ function updatePlayer(state: GameState, input: Input, dt: number): void {
     player.jumpBufferTimer = 0;
     player.jumpHoldTimer = movement.jumpHoldTime;
     player.dashAvailable = true;
+    player.dashTimer = 0;
     addBurst(state, "jump", player.x, player.y, player.facing);
   }
 
