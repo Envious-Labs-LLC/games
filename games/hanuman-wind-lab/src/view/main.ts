@@ -78,6 +78,17 @@ type HeroPose =
   | "attack-windup"
   | "attack-impact";
 
+type AtmosphereDiagnostics = {
+  reducedMotion: boolean;
+  backgroundOffsetX: number;
+  cloudOffsetX: number;
+  mistOffsetX: number;
+  cloudDrift: number;
+  windStrength: number;
+  templeLights: number;
+  birds: number;
+};
+
 declare global {
   interface Window {
     __WIND_STATE__: GameState;
@@ -96,15 +107,31 @@ declare global {
     __WIND_HERO_POSE_HISTORY__: HeroPose[];
     __WIND_HERO_TEXTURE__: string;
     __WIND_HERO_TEXTURE_HISTORY__: string[];
+    __WIND_ATMOSPHERE__: AtmosphereDiagnostics;
   }
 }
 
 const WIDTH = 960;
 const HEIGHT = 540;
+const BACKDROP_HEIGHT = HEIGHT + 100;
+const BACKDROP_WIDTH = BACKDROP_HEIGHT * (16 / 9);
+const TEMPLE_LIGHTS = [
+  { x: 0.626, y: 0.467, phase: 0.1, size: 1.8 },
+  { x: 0.658, y: 0.443, phase: 1.7, size: 1.4 },
+  { x: 0.69, y: 0.404, phase: 2.9, size: 1.6 },
+  { x: 0.718, y: 0.37, phase: 4.1, size: 1.5 },
+  { x: 0.746, y: 0.34, phase: 5.5, size: 2 },
+  { x: 0.773, y: 0.404, phase: 0.8, size: 1.5 },
+  { x: 0.798, y: 0.463, phase: 2.2, size: 1.4 },
+  { x: 0.836, y: 0.57, phase: 3.6, size: 1.2 },
+  { x: 0.868, y: 0.594, phase: 5, size: 1.5 },
+] as const;
 
 class WindScene extends Phaser.Scene {
   private state!: GameState;
   private backgroundImage!: Phaser.GameObjects.Image;
+  private backdropAtmosphere!: Phaser.GameObjects.Graphics;
+  private foregroundAtmosphere!: Phaser.GameObjects.Graphics;
   private heroImage!: Phaser.GameObjects.Image;
   private worldGraphics!: Phaser.GameObjects.Graphics;
   private actorGraphics!: Phaser.GameObjects.Graphics;
@@ -162,12 +189,24 @@ class WindScene extends Phaser.Scene {
     window.__WIND_HERO_POSE_HISTORY__ = ["idle"];
     window.__WIND_HERO_TEXTURE__ = "hanuman-wind";
     window.__WIND_HERO_TEXTURE_HISTORY__ = ["hanuman-wind"];
+    window.__WIND_ATMOSPHERE__ = {
+      reducedMotion: this.reducedMotion,
+      backgroundOffsetX: 0,
+      cloudOffsetX: 0,
+      mistOffsetX: 0,
+      cloudDrift: 0,
+      windStrength: 0,
+      templeLights: TEMPLE_LIGHTS.length,
+      birds: this.reducedMotion ? 0 : 4,
+    };
 
     this.backgroundImage = this.add
       .image(WIDTH / 2, HEIGHT / 2, "leap-to-lanka-night")
-      .setDisplaySize(WIDTH + 100, HEIGHT + 56)
-      .setDepth(-2);
+      .setDisplaySize(BACKDROP_WIDTH, BACKDROP_HEIGHT)
+      .setDepth(-4);
+    this.backdropAtmosphere = this.add.graphics().setDepth(-3);
     this.worldGraphics = this.add.graphics();
+    this.foregroundAtmosphere = this.add.graphics().setDepth(3);
     this.actorGraphics = this.add.graphics();
     this.heroImage = this.add
       .image(0, 0, "hanuman-wind")
@@ -311,9 +350,11 @@ class WindScene extends Phaser.Scene {
       targetY,
       this.reducedMotion ? 0.2 : 0.07,
     );
+    const backgroundOffsetX =
+      -this.cameraX * (this.reducedMotion ? 0.008 : 0.025);
     this.backgroundImage.setPosition(
-      WIDTH / 2 - this.cameraX * 0.015,
-      HEIGHT / 2 - this.cameraY * 0.01,
+      WIDTH / 2 + backgroundOffsetX,
+      HEIGHT / 2 - this.cameraY * (this.reducedMotion ? 0.004 : 0.012),
     );
     this.draw();
   }
@@ -369,10 +410,177 @@ class WindScene extends Phaser.Scene {
   }
 
   private draw(): void {
+    this.drawLivingBackdrop();
     this.drawWorld();
     this.drawActor();
     this.drawEffects();
     this.drawUi();
+  }
+
+  private drawLivingBackdrop(): void {
+    const back = this.backdropAtmosphere.clear();
+    const front = this.foregroundAtmosphere.clear();
+    const motionTick = this.reducedMotion ? 0 : this.state.tick;
+    const cloudDrift = motionTick * 0.055;
+    const speedShare = Phaser.Math.Clamp(
+      Math.abs(this.state.player.vx) / 460,
+      0,
+      1,
+    );
+    const windStrength = this.reducedMotion
+      ? 0
+      : Phaser.Math.Clamp(
+          0.2 +
+            speedShare * 0.75 +
+            (this.state.player.dashTimer > 0 ? 0.5 : 0),
+          0,
+          1.35,
+        );
+    const backgroundOffsetX =
+      -this.cameraX * (this.reducedMotion ? 0.008 : 0.025);
+    const cloudOffsetX =
+      -this.cameraX * (this.reducedMotion ? 0.0015 : 0.012);
+    const mistOffsetX =
+      -this.cameraX * (this.reducedMotion ? 0.0025 : 0.045);
+    const backgroundLeft =
+      this.backgroundImage.x - this.backgroundImage.displayWidth * 0.5;
+    const backgroundTop =
+      this.backgroundImage.y - this.backgroundImage.displayHeight * 0.5;
+
+    const moonX =
+      backgroundLeft + this.backgroundImage.displayWidth * 0.34;
+    const moonY =
+      backgroundTop + this.backgroundImage.displayHeight * 0.205;
+    const moonPulse = this.reducedMotion
+      ? 1
+      : 1 + Math.sin(motionTick * 0.018) * 0.06;
+    back.fillStyle(0xe7fbff, 0.025);
+    back.fillCircle(moonX, moonY, 76 * moonPulse);
+    back.lineStyle(2, 0xdaf8ff, 0.09);
+    back.strokeCircle(moonX, moonY, 55 * moonPulse);
+
+    for (let cloud = 0; cloud < 6; cloud += 1) {
+      const cloudX =
+        wrap(
+          cloud * 214 +
+            cloudDrift * (0.35 + (cloud % 3) * 0.12) +
+            cloudOffsetX,
+          WIDTH + 380,
+        ) - 190;
+      const cloudY = 74 + ((cloud * 71) % 135);
+      const cloudWidth = 118 + (cloud % 3) * 38;
+      back.fillStyle(0xc8e8ed, 0.018 + (cloud % 2) * 0.012);
+      back.fillEllipse(cloudX, cloudY, cloudWidth, 25);
+      back.fillEllipse(
+        cloudX + cloudWidth * 0.18,
+        cloudY - 8,
+        cloudWidth * 0.52,
+        23,
+      );
+      back.fillEllipse(
+        cloudX - cloudWidth * 0.24,
+        cloudY + 4,
+        cloudWidth * 0.45,
+        18,
+      );
+    }
+
+    for (let mist = 0; mist < 7; mist += 1) {
+      const mistX =
+        wrap(
+          mist * 191 +
+            cloudDrift * (0.75 + (mist % 2) * 0.22) +
+            mistOffsetX,
+          WIDTH + 480,
+        ) - 240;
+      const mistY = 290 + ((mist * 53) % 155);
+      back.fillStyle(0xbbe8ec, 0.018 + (mist % 3) * 0.01);
+      back.fillEllipse(mistX, mistY, 260 + (mist % 3) * 65, 24);
+    }
+
+    for (const light of TEMPLE_LIGHTS) {
+      const x =
+        backgroundLeft + this.backgroundImage.displayWidth * light.x;
+      const y =
+        backgroundTop + this.backgroundImage.displayHeight * light.y;
+      const flicker = this.reducedMotion
+        ? 0.72
+        : 0.55 + Math.sin(motionTick * 0.065 + light.phase) * 0.3;
+      back.fillStyle(0xffc45e, 0.045 * flicker);
+      back.fillCircle(x, y, light.size * 5);
+      back.fillStyle(0xffe28a, 0.55 + flicker * 0.4);
+      back.fillCircle(x, y, light.size);
+    }
+
+    if (!this.reducedMotion) {
+      for (let bird = 0; bird < 4; bird += 1) {
+        const x =
+          wrap(
+            bird * 287 + motionTick * (0.12 + bird * 0.018) -
+              this.cameraX * 0.025,
+            WIDTH + 240,
+          ) - 120;
+        const y = 135 + ((bird * 47) % 105) + Math.sin(motionTick * 0.025 + bird) * 6;
+        const wing = Math.sin(motionTick * 0.13 + bird) * 3;
+        back.lineStyle(1.5, 0x06151d, 0.42);
+        back.lineBetween(x - 5, y + wing, x, y);
+        back.lineBetween(x, y, x + 5, y - wing);
+      }
+    }
+
+    if (!this.reducedMotion) {
+      const streakCount = 13 + Math.round(windStrength * 12);
+      for (let streak = 0; streak < streakCount; streak += 1) {
+        const speed = 0.7 + (streak % 5) * 0.18 + windStrength * 1.5;
+        const x =
+          wrap(
+            streak * 173 + motionTick * speed - this.cameraX * 0.08,
+            WIDTH + 300,
+          ) - 150;
+        const y = 92 + ((streak * 83) % 345);
+        const length = 24 + (streak % 4) * 13 + windStrength * 38;
+        front.lineStyle(
+          1 + (streak % 2),
+          0xd5fbff,
+          0.055 + windStrength * 0.08,
+        );
+        front.lineBetween(x, y, x + length, y - 4 - windStrength * 2);
+      }
+
+      const leafCount = Math.round(windStrength * 10);
+      for (let leaf = 0; leaf < leafCount; leaf += 1) {
+        const x =
+          wrap(
+            leaf * 127 + motionTick * (1.25 + windStrength) -
+              this.cameraX * 0.11,
+            WIDTH + 160,
+          ) - 80;
+        const y =
+          220 +
+          ((leaf * 61 + motionTick * (0.28 + (leaf % 3) * 0.08)) % 250);
+        const tilt = Math.sin(motionTick * 0.12 + leaf) * 6;
+        front.fillStyle(leaf % 2 === 0 ? 0x8ab06d : 0xd59d45, 0.26);
+        front.fillTriangle(
+          x - 4,
+          y,
+          x + 5,
+          y + tilt * 0.3,
+          x,
+          y + 5,
+        );
+      }
+    }
+
+    window.__WIND_ATMOSPHERE__ = {
+      reducedMotion: this.reducedMotion,
+      backgroundOffsetX,
+      cloudOffsetX,
+      mistOffsetX,
+      cloudDrift,
+      windStrength,
+      templeLights: TEMPLE_LIGHTS.length,
+      birds: this.reducedMotion ? 0 : 4,
+    };
   }
 
   private drawWorld(): void {
@@ -380,17 +588,6 @@ class WindScene extends Phaser.Scene {
     const motionTick = this.reducedMotion ? 0 : this.state.tick;
     g.fillGradientStyle(0x071525, 0x071525, 0x143d4d, 0x1c5b62, 0.22);
     g.fillRect(0, 0, WIDTH, HEIGHT);
-
-    for (let index = 0; index < 22; index += 1) {
-      const x =
-        ((index * 231 + motionTick * (0.35 + (index % 3) * 0.12)) %
-          (WIDTH + 420)) -
-        210;
-      const y = 85 + ((index * 97) % 300);
-      const length = 35 + (index % 4) * 18;
-      g.lineStyle(1 + (index % 2), 0xc9fbff, 0.18 + (index % 3) * 0.08);
-      g.lineBetween(x, y, x + length, y - 4);
-    }
 
     for (const platform of this.state.platforms)
       drawPlatform(g, platform, this.cameraX, this.cameraY);
@@ -793,6 +990,10 @@ function recordDisplayedHeroPose(pose: HeroPose, textureKey: string): void {
       window.__WIND_HERO_TEXTURE_HISTORY__.shift();
     }
   }
+}
+
+function wrap(value: number, size: number): number {
+  return ((value % size) + size) % size;
 }
 
 function drawShadowSentry(

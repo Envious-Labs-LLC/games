@@ -23,6 +23,11 @@ a ground or airborne gada strike, two shadow sentries, hit recovery, and
 environment interactions. Hanuman has distinct idle, three-frame run, airborne,
 attack windup, and attack impact art.
 
+The moonlit Lanka painting is presented as a living backdrop. Distant scenery
+shifts with camera depth, clouds and valley mist drift independently, temple
+lights flicker, birds cross the sky, and foreground wind and leaves accelerate
+with Hanuman. Reduced-motion mode keeps the atmosphere calm.
+
 All generated art, its editable chroma source, and the prompts used to create it
 are stored in this project. The art is approved for prototype use only. It is
 not yet approved for commercial release.

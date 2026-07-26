@@ -183,6 +183,85 @@ test("Hanuman visibly cycles run, air, and gada attack poses", async ({
   expect(errors).toEqual([]);
 });
 
+test("living backdrop drifts and reacts to Hanuman's speed", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  await page.goto("/?seed=209");
+  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+
+  const startingAtmosphere = await page.evaluate(
+    () => window.__WIND_ATMOSPHERE__,
+  );
+  expect(startingAtmosphere.reducedMotion).toBe(false);
+  expect(startingAtmosphere.templeLights).toBe(9);
+  expect(startingAtmosphere.birds).toBe(4);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.cloudDrift))
+    .toBeGreaterThan(startingAtmosphere.cloudDrift);
+
+  await page.keyboard.down("d");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.windStrength))
+    .toBeGreaterThan(0.65);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__WIND_ATMOSPHERE__.backgroundOffsetX),
+    )
+    .toBeLessThan(-2);
+  await page.keyboard.up("d");
+
+  expect(errors).toEqual([]);
+});
+
+test("reduced motion keeps the living backdrop calm", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+
+  await page.goto("/?seed=210");
+  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__))
+    .toMatchObject({
+      reducedMotion: true,
+      cloudDrift: 0,
+      windStrength: 0,
+      templeLights: 9,
+      birds: 0,
+    });
+
+  const startingX = await page.evaluate(() => window.__WIND_STATE__.player.x);
+  await page.keyboard.down("d");
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.player.x))
+    .toBeGreaterThan(startingX + 340);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__WIND_ATMOSPHERE__.backgroundOffsetX),
+    )
+    .toBeLessThan(-1);
+  await page.keyboard.up("d");
+
+  const movedAtmosphere = await page.evaluate(
+    () => window.__WIND_ATMOSPHERE__,
+  );
+  expect(Math.abs(movedAtmosphere.backgroundOffsetX)).toBeLessThan(3);
+  expect(Math.abs(movedAtmosphere.cloudOffsetX)).toBeLessThan(1);
+  expect(Math.abs(movedAtmosphere.mistOffsetX)).toBeLessThan(1);
+  expect(movedAtmosphere.windStrength).toBe(0);
+
+  expect(errors).toEqual([]);
+});
+
 test("shadow sentry renders nearby and yields to Mountain dash", async ({
   page,
 }) => {
