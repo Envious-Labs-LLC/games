@@ -149,6 +149,12 @@ test("Hanuman visibly cycles run, air, and gada attack poses", async ({
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__.player.x))
     .toBeGreaterThan(startingX + 70);
+  const runningRender = await page.evaluate(() => window.__WIND_HERO_RENDER__);
+  expect(Number.isInteger(runningRender.x)).toBe(true);
+  expect(Number.isInteger(runningRender.y)).toBe(true);
+  expect(runningRender.rotation).toBe(0);
+  expect(runningRender.displayWidth).toBeCloseTo(168, 5);
+  expect(runningRender.displayHeight).toBeCloseTo(112, 5);
   await page.keyboard.up("d");
 
   await page.keyboard.press("Space");
@@ -297,6 +303,7 @@ test("painted foreground kit replaces the gray-box world art", async ({
     .poll(() => page.evaluate(() => window.__WIND_ENVIRONMENT_ART__))
     .toMatchObject({
       paintedPlatforms: 14,
+      platformFloorInset: 10,
       paintedBarriers: 2,
       paintedAnchors: 6,
       paintedShrine: true,

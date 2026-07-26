@@ -2,11 +2,11 @@
 
 Tool: OpenAI built-in image generation
 
-Mode: Identity-preserving edits of `source/characters/hanuman-wind.png`
+Mode: Identity-preserving pose generation and edge-cleanup edits
 
 Generated: 2026-07-25
 
-All six edits preserved the same respectful Hanuman identity, face, crown,
+All pose edits preserved the same respectful Hanuman identity, face, crown,
 jewelry, saffron and deep-red clothing, body proportions, golden gada design,
 painterly fantasy rendering, lighting, and side-view camera angle. Each used a
 flat `#ff00ff` chroma-key background with one character, two arms, two legs, no
@@ -51,3 +51,14 @@ traveling through a clear overhead arc.
 Post-processing: chroma-key backgrounds were removed with the bundled image
 generation helper using a tight matte to preserve the warm orange character
 palette.
+
+## Edge cleanup pass
+
+After live playtesting exposed a cyan rim around Hanuman, the built-in image
+editing tool was used again on the idle, three running, airborne, windup, and
+impact sources. Each surgical edit preserved the pose, identity, costume,
+weapon, proportions, and painterly detail while removing only the cyan,
+blue-white outer rim light and replacing it with natural adjacent subject
+colors. The corrected frames were isolated on flat chroma backgrounds, matted
+with one pixel of edge contraction, and downsampled to 768 by 512 runtime PNGs
+for cleaner browser filtering at the 168 by 112 gameplay size.

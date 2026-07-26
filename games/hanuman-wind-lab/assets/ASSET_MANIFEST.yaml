@@ -15,11 +15,12 @@ assets:
     type: character
     source: OpenAI built-in image generation
     prompt: source/prompts/hanuman-wind.md
+    edgeCleanupPrompt: source/prompts/hanuman-animation-poses.md
     generated: 2026-07-25
     approvedForCommercial: false
     humanReviewed: false
     prototypeUseApproved: true
-    notes: Original transparent prototype hero. Requires founder review before production use.
+    notes: Original transparent prototype hero with a founder-requested clean-edge pass. Requires founder review before production use.
   - id: hanuman-animation-poses
     files:
       - source/characters/hanuman-run-a.png
@@ -42,7 +43,7 @@ assets:
     approvedForCommercial: false
     humanReviewed: false
     prototypeUseApproved: true
-    notes: Original six-pose prototype animation set. Requires founder review before production use.
+    notes: Original six-pose prototype animation set with a founder-requested clean-edge pass. Requires founder review before production use.
   - id: lanka-environment-art-pass
     files:
       - source/environment/high-clouds.png

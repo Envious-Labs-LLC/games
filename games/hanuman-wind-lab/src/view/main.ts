@@ -121,10 +121,19 @@ type AtmosphereDiagnostics = {
 
 type EnvironmentArtDiagnostics = {
   paintedPlatforms: number;
+  platformFloorInset: number;
   paintedBarriers: number;
   paintedAnchors: number;
   paintedShrine: boolean;
   texturesLoaded: boolean;
+};
+
+type HeroRenderDiagnostics = {
+  x: number;
+  y: number;
+  rotation: number;
+  displayWidth: number;
+  displayHeight: number;
 };
 
 declare global {
@@ -145,6 +154,7 @@ declare global {
     __WIND_HERO_POSE_HISTORY__: HeroPose[];
     __WIND_HERO_TEXTURE__: string;
     __WIND_HERO_TEXTURE_HISTORY__: string[];
+    __WIND_HERO_RENDER__: HeroRenderDiagnostics;
     __WIND_ATMOSPHERE__: AtmosphereDiagnostics;
     __WIND_ENVIRONMENT_ART__: EnvironmentArtDiagnostics;
   }
@@ -157,6 +167,7 @@ const BACKDROP_WIDTH = BACKDROP_HEIGHT * (16 / 9);
 const HIGH_CLOUD_LAYER_COUNT = 3;
 const HAZE_LAYER_COUNT = 4;
 const WIND_WISP_COUNT = 6;
+const PLATFORM_FLOOR_INSET = 10;
 
 class WindScene extends Phaser.Scene {
   private state!: GameState;
@@ -407,6 +418,7 @@ class WindScene extends Phaser.Scene {
       .setDepth(2);
     window.__WIND_ENVIRONMENT_ART__ = {
       paintedPlatforms: this.platformFaces.length,
+      platformFloorInset: PLATFORM_FLOOR_INSET,
       paintedBarriers: this.barrierImages.length,
       paintedAnchors: this.anchorImages.length,
       paintedShrine: true,
@@ -636,7 +648,13 @@ class WindScene extends Phaser.Scene {
         .setSize(platform.width, platform.height)
         .setVisible(visible);
       this.platformCaps[index]!
-        .setPosition(x, y)
+        .setPosition(
+          x,
+          y - Math.min(
+            PLATFORM_FLOOR_INSET,
+            Math.round(Math.min(56, platform.height) * 0.2),
+          ),
+        )
         .setSize(platform.width, Math.min(56, platform.height))
         .setVisible(visible);
     }
@@ -802,9 +820,7 @@ class WindScene extends Phaser.Scene {
       ? player.facing * 0.34
       : player.dashTimer > 0
         ? player.facing * 0.13
-        : isRunPose(heroPose)
-          ? Phaser.Math.Clamp(player.vx / 2600, -0.045, 0.045)
-          : 0;
+        : 0;
     const lift = player.earthSlamming ? 10 : player.gliding ? -8 : 0;
     const formScale = player.form === "mountain" ? 1.1 : 1;
     const poseOrigin = heroPoseOrigin(heroPose);
@@ -815,23 +831,32 @@ class WindScene extends Phaser.Scene {
     const attackKick =
       heroPose === "attack-impact" ? player.attackFacing * 4 : 0;
     const attackStretch = heroPose === "attack-impact" ? 1.04 : 1;
+    const heroX = Math.round(x + attackKick);
+    const heroY = Math.round(y + lift + runBob + 3);
     this.heroImage
       .setTexture(textureKey)
       .setOrigin(poseOrigin.x, poseOrigin.y)
-      .setPosition(x + attackKick, y + lift + runBob + 3)
+      .setPosition(heroX, heroY)
       .setFlipX(
         (player.attackTimer > 0 ? player.attackFacing : player.facing) < 0,
       )
       .setRotation(motionLean)
-      .setScale(
-        (168 / 1536) * formScale * attackStretch,
-        (112 / 1024) * formScale,
+      .setDisplaySize(
+        168 * formScale * attackStretch,
+        112 * formScale,
       )
       .setTint(player.form === "mountain" ? 0xffd19a : 0xffffff)
       .setAlpha(player.dashTimer > 0 ? 0.9 : 1)
       .setVisible(
         x > -180 && x < WIDTH + 180 && y > -130 && y < HEIGHT + 130,
       );
+    window.__WIND_HERO_RENDER__ = {
+      x: this.heroImage.x,
+      y: this.heroImage.y,
+      rotation: this.heroImage.rotation,
+      displayWidth: this.heroImage.displayWidth,
+      displayHeight: this.heroImage.displayHeight,
+    };
     if (this.heroImage.texture.key !== textureKey) {
       heroPose = "idle";
       this.heroImage.setTexture("hanuman-wind").setOrigin(0.46, 0.94);
@@ -1174,7 +1199,7 @@ new Phaser.Game({
   width: WIDTH,
   height: HEIGHT,
   backgroundColor: "#071525",
-  render: { antialias: true, pixelArt: false },
+  render: { antialias: true, pixelArt: false, roundPixels: true },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
