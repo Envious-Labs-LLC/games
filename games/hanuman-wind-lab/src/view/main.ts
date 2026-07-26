@@ -109,6 +109,7 @@ type HeroPose =
 
 type AtmosphereDiagnostics = {
   reducedMotion: boolean;
+  autonomousTime: number;
   backgroundOffsetX: number;
   hazeOffsetX: number;
   hazeDrift: number;
@@ -180,6 +181,7 @@ class WindScene extends Phaser.Scene {
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private bufferedInput = createInputBuffer();
   private accumulator = 0;
+  private atmosphereSeconds = 0;
   private cameraX = 0;
   private cameraY = 0;
   private pointerAttackQueued = false;
@@ -235,11 +237,12 @@ class WindScene extends Phaser.Scene {
     window.__WIND_HERO_TEXTURE_HISTORY__ = ["hanuman-wind"];
     window.__WIND_ATMOSPHERE__ = {
       reducedMotion: this.reducedMotion,
+      autonomousTime: 0,
       backgroundOffsetX: 0,
       hazeOffsetX: 0,
       hazeDrift: 0,
       windDrift: 0,
-      windStrength: this.reducedMotion ? 0 : 0.45,
+      windStrength: this.reducedMotion ? 0 : 0.62,
       hazeLayers: HAZE_LAYER_COUNT,
       windWisps: this.reducedMotion ? 0 : WIND_WISP_COUNT,
     };
@@ -312,7 +315,7 @@ class WindScene extends Phaser.Scene {
       .text(
         WIDTH / 2,
         HEIGHT - 18,
-        "MOVE A/D   JUMP SPACE   DASH SHIFT   ATTACK CLICK / J   FORM E   POWER Q   MUTE M",
+        "MOVE A/D   JUMP SPACE   DASH SHIFT   ATTACK Z / CLICK   FORM E   POWER X   MUTE M",
         {
           fontFamily: "Arial, sans-serif",
           fontSize: "12px",
@@ -345,8 +348,8 @@ class WindScene extends Phaser.Scene {
       space: Phaser.Input.Keyboard.KeyCodes.SPACE,
       shift: Phaser.Input.Keyboard.KeyCodes.SHIFT,
       e: Phaser.Input.Keyboard.KeyCodes.E,
-      q: Phaser.Input.Keyboard.KeyCodes.Q,
-      j: Phaser.Input.Keyboard.KeyCodes.J,
+      x: Phaser.Input.Keyboard.KeyCodes.X,
+      z: Phaser.Input.Keyboard.KeyCodes.Z,
       r: Phaser.Input.Keyboard.KeyCodes.R,
       escape: Phaser.Input.Keyboard.KeyCodes.ESC,
       m: Phaser.Input.Keyboard.KeyCodes.M,
@@ -434,6 +437,9 @@ class WindScene extends Phaser.Scene {
       this.draw();
       return;
     }
+    if (!this.reducedMotion) {
+      this.atmosphereSeconds += Math.min(deltaMs, 50) / 1000;
+    }
 
     this.bufferedInput = bufferInput(this.bufferedInput, this.readInput());
     this.accumulator += Math.min(deltaMs, 50) / 1000;
@@ -511,9 +517,9 @@ class WindScene extends Phaser.Scene {
     input.jumpHeld = this.keys.space!.isDown;
     input.dashPressed = Phaser.Input.Keyboard.JustDown(this.keys.shift!);
     input.formPressed = Phaser.Input.Keyboard.JustDown(this.keys.e!);
-    input.powerPressed = Phaser.Input.Keyboard.JustDown(this.keys.q!);
+    input.powerPressed = Phaser.Input.Keyboard.JustDown(this.keys.x!);
     input.attackPressed =
-      Phaser.Input.Keyboard.JustDown(this.keys.j!) ||
+      Phaser.Input.Keyboard.JustDown(this.keys.z!) ||
       this.pointerAttackQueued;
     this.pointerAttackQueued = false;
     if (
@@ -540,23 +546,10 @@ class WindScene extends Phaser.Scene {
   }
 
   private drawLivingBackdrop(): void {
-    const motionTick = this.reducedMotion ? 0 : this.state.tick;
+    const motionTick = this.atmosphereSeconds * 60;
     const hazeDrift = motionTick * 0.08;
     const windDrift = motionTick * 0.62;
-    const speedShare = Phaser.Math.Clamp(
-      Math.abs(this.state.player.vx) / 460,
-      0,
-      1,
-    );
-    const windStrength = this.reducedMotion
-      ? 0
-      : Phaser.Math.Clamp(
-          0.45 +
-            speedShare * 0.32 +
-            (this.state.player.dashTimer > 0 ? 0.23 : 0),
-          0,
-          1,
-        );
+    const windStrength = this.reducedMotion ? 0 : 0.62;
     const backgroundOffsetX =
       -this.cameraX * (this.reducedMotion ? 0.008 : 0.025);
     const hazeOffsetX =
@@ -574,7 +567,7 @@ class WindScene extends Phaser.Scene {
       cloud
         .setPosition(x, 105 + index * 38)
         .setDisplaySize(760 - index * 55, 428 - index * 31)
-        .setAlpha(0.055 + index * 0.012);
+        .setAlpha(0.075 + index * 0.015);
     }
 
     for (let index = 0; index < this.hazeLayers.length; index += 1) {
@@ -590,7 +583,7 @@ class WindScene extends Phaser.Scene {
       haze
         .setPosition(x, y)
         .setDisplaySize(700 + (index % 2) * 90, 394 + (index % 2) * 50)
-        .setAlpha(0.06 + (index % 2) * 0.018);
+        .setAlpha(0.085 + (index % 2) * 0.022);
     }
 
     for (let index = 0; index < this.windWisps.length; index += 1) {
@@ -611,12 +604,13 @@ class WindScene extends Phaser.Scene {
           203 + (index % 3) * 39,
         )
         .setRotation(-0.035 + Math.sin(motionTick * 0.018 + index) * 0.012)
-        .setAlpha(0.065 + windStrength * 0.04 + (index % 3) * 0.01)
+        .setAlpha(0.09 + windStrength * 0.06 + (index % 3) * 0.012)
         .setVisible(!this.reducedMotion);
     }
 
     window.__WIND_ATMOSPHERE__ = {
       reducedMotion: this.reducedMotion,
+      autonomousTime: this.atmosphereSeconds,
       backgroundOffsetX,
       hazeOffsetX,
       hazeDrift,
@@ -991,9 +985,9 @@ class WindScene extends Phaser.Scene {
                     !sentry.defeated &&
                     Math.abs(sentry.x - this.state.player.x) <= 220,
                 )
-              ? "SHADOW SENTRY\nGADA: J / CLICK. MOUNTAIN: DASH OR SLAM."
+              ? "SHADOW SENTRY\nGADA: Z / CLICK. MOUNTAIN: DASH OR SLAM."
               : nearCrackedStone
-                ? "CRACKED STONE\nMOUNTAIN: DASH OR JUMP, THEN Q"
+                ? "CRACKED STONE\nMOUNTAIN: DASH OR JUMP, THEN X"
                 : "";
     this.centerText.setText(centerMessage);
     this.centerText.setVisible(centerMessage.length > 0);

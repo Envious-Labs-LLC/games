@@ -27,7 +27,7 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
     .poll(() => page.evaluate(() => window.__WIND_STATE__?.status))
     .toBe("playing");
 
-  await page.keyboard.press("q");
+  await page.keyboard.press("x");
   await expect
     .poll(() =>
       page.evaluate(() => window.__WIND_STATE__.player.anchorUseCount),
@@ -74,7 +74,7 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__.player.onGround))
     .toBe(false);
-  await page.keyboard.press("q");
+  await page.keyboard.press("x");
   await expect
     .poll(() =>
       page.evaluate(() => window.__WIND_STATE__.player.earthSlamStartCount),
@@ -166,7 +166,7 @@ test("Hanuman visibly cycles run, air, and gada attack poses", async ({
     window.__WIND_HERO_POSE_HISTORY__ = [];
     window.__WIND_HERO_TEXTURE_HISTORY__ = [];
   });
-  await page.keyboard.press("j");
+  await page.keyboard.press("z");
   await expect
     .poll(() =>
       page.evaluate(
@@ -196,7 +196,7 @@ test("Hanuman visibly cycles run, air, and gada attack poses", async ({
   expect(errors).toEqual([]);
 });
 
-test("living backdrop drifts and reacts to Hanuman's speed", async ({
+test("living backdrop drifts independently of Hanuman", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -214,7 +214,11 @@ test("living backdrop drifts and reacts to Hanuman's speed", async ({
   expect(startingAtmosphere.reducedMotion).toBe(false);
   expect(startingAtmosphere.hazeLayers).toBe(4);
   expect(startingAtmosphere.windWisps).toBe(6);
-  expect(startingAtmosphere.windStrength).toBeGreaterThanOrEqual(0.45);
+  expect(startingAtmosphere.windStrength).toBe(0.62);
+  expect(await page.evaluate(() => window.__WIND_STATE__.started)).toBe(false);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.autonomousTime))
+    .toBeGreaterThan(startingAtmosphere.autonomousTime);
   await expect
     .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.hazeDrift))
     .toBeGreaterThan(startingAtmosphere.hazeDrift);
@@ -224,14 +228,17 @@ test("living backdrop drifts and reacts to Hanuman's speed", async ({
 
   await page.keyboard.down("d");
   await expect
-    .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.windStrength))
-    .toBeGreaterThan(0.62);
+    .poll(() => page.evaluate(() => window.__WIND_STATE__.started))
+    .toBe(true);
   await expect
     .poll(() =>
       page.evaluate(() => window.__WIND_ATMOSPHERE__.backgroundOffsetX),
     )
     .toBeLessThan(-2);
   await page.keyboard.up("d");
+  expect(
+    await page.evaluate(() => window.__WIND_ATMOSPHERE__.windStrength),
+  ).toBe(startingAtmosphere.windStrength);
 
   expect(errors).toEqual([]);
 });
@@ -250,6 +257,7 @@ test("reduced motion keeps the living backdrop calm", async ({ page }) => {
     .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__))
     .toMatchObject({
       reducedMotion: true,
+      autonomousTime: 0,
       hazeDrift: 0,
       windDrift: 0,
       windStrength: 0,
@@ -429,7 +437,7 @@ test("Wind evades a shadow wave and answers with a gada strike", async ({
     state.player.onGround = true;
     state.player.facing = 1;
   });
-  await page.keyboard.press("j");
+  await page.keyboard.press("z");
   await expect
     .poll(() =>
       page.evaluate(() => window.__WIND_STATE__.shadowSentries[0]!.defeated),
@@ -467,20 +475,28 @@ test("pause, blur, mute, and mouse attack behave in the real browser", async ({
   await expect
     .poll(() => page.evaluate(() => window.__WIND_PAUSED__))
     .toBe(true);
-  const pausedTick = await page.evaluate(() => window.__WIND_STATE__.tick);
-  const tickAfterFrames = await page.evaluate(
+  const pausedState = await page.evaluate(() => ({
+    tick: window.__WIND_STATE__.tick,
+    atmosphereTime: window.__WIND_ATMOSPHERE__.autonomousTime,
+  }));
+  const stateAfterFrames = await page.evaluate(
     () =>
-      new Promise<number>((resolve) => {
+      new Promise<{ tick: number; atmosphereTime: number }>((resolve) => {
         let frames = 0;
         const advance = (): void => {
           frames += 1;
-          if (frames >= 10) resolve(window.__WIND_STATE__.tick);
+          if (frames >= 10) {
+            resolve({
+              tick: window.__WIND_STATE__.tick,
+              atmosphereTime: window.__WIND_ATMOSPHERE__.autonomousTime,
+            });
+          }
           else requestAnimationFrame(advance);
         };
         requestAnimationFrame(advance);
       }),
   );
-  expect(tickAfterFrames).toBe(pausedTick);
+  expect(stateAfterFrames).toEqual(pausedState);
 
   await page.keyboard.press("Escape");
   await expect
@@ -488,7 +504,7 @@ test("pause, blur, mute, and mouse attack behave in the real browser", async ({
     .toBe(false);
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__.tick))
-    .toBeGreaterThan(pausedTick);
+    .toBeGreaterThan(pausedState.tick);
 
   await page.evaluate(() => window.dispatchEvent(new Event("blur")));
   await expect

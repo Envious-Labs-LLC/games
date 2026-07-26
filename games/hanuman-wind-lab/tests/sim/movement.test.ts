@@ -643,7 +643,7 @@ describe("Hanuman Wind Lab movement", () => {
     expect(cooldownState.player.anchorUseCount).toBe(1);
   });
 
-  it("uses E plus Q for form change only in either direction", () => {
+  it("uses E plus X for form change only in either direction", () => {
     let mountainState = createGame(69);
     mountainState.player.form = "mountain";
     mountainState.player.y = 350;

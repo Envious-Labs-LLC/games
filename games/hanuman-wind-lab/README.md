@@ -55,9 +55,9 @@ the latest checkpoint.
 - Higher leap: hold Space while rising
 - Glide: hold Space while falling
 - Ground or air dash: Shift
-- Gada strike: left click or J
+- Gada strike: Z or left click
 - Change form: E
-- Form power: Q
+- Form power: X
   - Wind Form near a glowing anchor: wind vault
   - Mountain Form while airborne: earth-slam
 - Wall jump: press Space while touching a wall
