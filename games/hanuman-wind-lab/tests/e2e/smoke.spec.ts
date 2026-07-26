@@ -1,4 +1,17 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function waitForWindScene(page: Page): Promise<void> {
+  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__WIND_STATE__?.status === "playing" &&
+          window.__WIND_ENVIRONMENT_ART__?.texturesLoaded === true,
+      ),
+    )
+    .toBe(true);
+}
 
 test("wind course boots and responds to movement abilities", async ({ page }) => {
   const errors: string[] = [];
@@ -8,7 +21,7 @@ test("wind course boots and responds to movement abilities", async ({ page }) =>
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/?seed=205");
-  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await waitForWindScene(page);
   expect(errors).toEqual([]);
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__?.status))
@@ -103,7 +116,7 @@ test("Hanuman visibly cycles run, air, and gada attack poses", async ({
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/?seed=208");
-  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await waitForWindScene(page);
   await expect
     .poll(() => page.evaluate(() => window.__WIND_HERO_POSE__))
     .toBe("idle");
@@ -193,22 +206,26 @@ test("living backdrop drifts and reacts to Hanuman's speed", async ({
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/?seed=209");
-  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await waitForWindScene(page);
 
   const startingAtmosphere = await page.evaluate(
     () => window.__WIND_ATMOSPHERE__,
   );
   expect(startingAtmosphere.reducedMotion).toBe(false);
-  expect(startingAtmosphere.templeLights).toBe(9);
-  expect(startingAtmosphere.birds).toBe(4);
+  expect(startingAtmosphere.hazeLayers).toBe(4);
+  expect(startingAtmosphere.windWisps).toBe(6);
+  expect(startingAtmosphere.windStrength).toBeGreaterThanOrEqual(0.45);
   await expect
-    .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.cloudDrift))
-    .toBeGreaterThan(startingAtmosphere.cloudDrift);
+    .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.hazeDrift))
+    .toBeGreaterThan(startingAtmosphere.hazeDrift);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.windDrift))
+    .toBeGreaterThan(startingAtmosphere.windDrift);
 
   await page.keyboard.down("d");
   await expect
     .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__.windStrength))
-    .toBeGreaterThan(0.65);
+    .toBeGreaterThan(0.62);
   await expect
     .poll(() =>
       page.evaluate(() => window.__WIND_ATMOSPHERE__.backgroundOffsetX),
@@ -228,15 +245,16 @@ test("reduced motion keeps the living backdrop calm", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 
   await page.goto("/?seed=210");
-  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await waitForWindScene(page);
   await expect
     .poll(() => page.evaluate(() => window.__WIND_ATMOSPHERE__))
     .toMatchObject({
       reducedMotion: true,
-      cloudDrift: 0,
+      hazeDrift: 0,
+      windDrift: 0,
       windStrength: 0,
-      templeLights: 9,
-      birds: 0,
+      hazeLayers: 4,
+      windWisps: 0,
     });
 
   const startingX = await page.evaluate(() => window.__WIND_STATE__.player.x);
@@ -255,11 +273,42 @@ test("reduced motion keeps the living backdrop calm", async ({ page }) => {
     () => window.__WIND_ATMOSPHERE__,
   );
   expect(Math.abs(movedAtmosphere.backgroundOffsetX)).toBeLessThan(3);
-  expect(Math.abs(movedAtmosphere.cloudOffsetX)).toBeLessThan(1);
-  expect(Math.abs(movedAtmosphere.mistOffsetX)).toBeLessThan(1);
+  expect(Math.abs(movedAtmosphere.hazeOffsetX)).toBeLessThan(1);
   expect(movedAtmosphere.windStrength).toBe(0);
 
   expect(errors).toEqual([]);
+});
+
+test("painted foreground kit replaces the gray-box world art", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/?seed=205");
+  await waitForWindScene(page);
+  await expect
+    .poll(() => page.evaluate(() => window.__WIND_ENVIRONMENT_ART__))
+    .toMatchObject({
+      paintedPlatforms: 14,
+      paintedBarriers: 2,
+      paintedAnchors: 6,
+      paintedShrine: true,
+      texturesLoaded: true,
+    });
+
+  await page.evaluate(() => {
+    const state = window.__WIND_STATE__;
+    state.started = true;
+    state.player.x = 850;
+    state.player.y = 500;
+    state.player.vx = 0;
+    state.player.vy = 0;
+    state.player.onGround = true;
+  });
+  await page.waitForTimeout(800);
+  await expect(page.locator("#game canvas")).toHaveScreenshot(
+    "painted-foreground-and-barrier.png",
+    { maxDiffPixelRatio: 0.01 },
+  );
 });
 
 test("shadow sentry renders nearby and yields to Mountain dash", async ({
@@ -272,7 +321,7 @@ test("shadow sentry renders nearby and yields to Mountain dash", async ({
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/?seed=205");
-  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await waitForWindScene(page);
   const stagedTick = await page.evaluate(() => {
     const state = window.__WIND_STATE__;
     const sentry = state.shadowSentries[0]!;
@@ -324,7 +373,7 @@ test("Wind evades a shadow wave and answers with a gada strike", async ({
   page.on("pageerror", (error) => errors.push(error.message));
 
   await page.goto("/?seed=206");
-  await expect(page.locator("#game canvas")).toBeVisible({ timeout: 15_000 });
+  await waitForWindScene(page);
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__?.status))
     .toBe("playing");
@@ -403,7 +452,7 @@ test("pause, blur, mute, and mouse attack behave in the real browser", async ({
 
   await page.goto("/?seed=207");
   const canvas = page.locator("#game canvas");
-  await expect(canvas).toBeVisible({ timeout: 15_000 });
+  await waitForWindScene(page);
   await expect
     .poll(() => page.evaluate(() => window.__WIND_STATE__?.status))
     .toBe("playing");

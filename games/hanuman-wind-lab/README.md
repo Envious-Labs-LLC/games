@@ -16,6 +16,7 @@ without rebuilding the prototype or searching another folder.
 - Asset provenance and approval status: `assets/ASSET_MANIFEST.yaml`
 - Automated checks and recorded replay: `tests/`
 - Bot playtesting and stability tools: `tools/`
+- Production payload cap: 12 MiB, enforced by `pnpm build`
 
 The current movement set includes variable jump, glide, wall jump, ground and
 air dash, Wind vaults, Mountain earth-slam, and form shifting. Combat includes
@@ -24,9 +25,11 @@ environment interactions. Hanuman has distinct idle, three-frame run, airborne,
 attack windup, and attack impact art.
 
 The moonlit Lanka painting is presented as a living backdrop. Distant scenery
-shifts with camera depth, clouds and valley mist drift independently, temple
-lights flicker, birds cross the sky, and foreground wind and leaves accelerate
-with Hanuman. Reduced-motion mode keeps the atmosphere calm.
+shifts with camera depth while painted cloud banks, valley mist, and wind wisps
+drift independently even when Hanuman stands still. Movement and dashing add
+intensity without driving the atmosphere. The playable world uses a matching
+painted Lanka kit for carved platforms, cracked barriers, wind anchors, and the
+finish shrine. Reduced-motion mode keeps the atmosphere calm.
 
 All generated art, its editable chroma source, and the prompts used to create it
 are stored in this project. The art is approved for prototype use only. It is

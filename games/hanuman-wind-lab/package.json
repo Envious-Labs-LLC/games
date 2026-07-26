@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && tsx tools/validate-build.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run tests/unit tests/sim",

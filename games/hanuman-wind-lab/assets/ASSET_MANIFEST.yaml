@@ -43,3 +43,30 @@ assets:
     humanReviewed: false
     prototypeUseApproved: true
     notes: Original six-pose prototype animation set. Requires founder review before production use.
+  - id: lanka-environment-art-pass
+    files:
+      - source/environment/high-clouds.png
+      - source/environment/valley-mist.png
+      - source/environment/wind-wisp.png
+      - source/environment/lanka-stone-wall.png
+      - source/environment/lanka-platform-cap.png
+      - source/environment/cracked-barrier.png
+      - source/environment/wind-anchor.png
+      - source/environment/lanka-shrine.png
+    sourceFiles:
+      - source/environment/high-clouds-source.png
+      - source/environment/valley-mist-source.png
+      - source/environment/wind-wisp-source.png
+      - source/environment/lanka-stone-wall-source.png
+      - source/environment/lanka-platform-cap-chroma.png
+      - source/environment/cracked-barrier-chroma.png
+      - source/environment/wind-anchor-chroma.png
+      - source/environment/lanka-shrine-chroma.png
+    type: environment-kit
+    source: OpenAI built-in image generation
+    prompt: source/prompts/environment-art-pass.md
+    generated: 2026-07-25
+    approvedForCommercial: false
+    humanReviewed: false
+    prototypeUseApproved: true
+    notes: Original painted atmosphere and foreground kit. Requires founder review before production use.

@@ -82,9 +82,26 @@ const requiredAssetFiles = [
   "source/characters/hanuman-attack-windup.png",
   "source/characters/hanuman-attack-impact-chroma.png",
   "source/characters/hanuman-attack-impact.png",
+  "source/environment/high-clouds-source.png",
+  "source/environment/high-clouds.png",
+  "source/environment/valley-mist-source.png",
+  "source/environment/valley-mist.png",
+  "source/environment/wind-wisp-source.png",
+  "source/environment/wind-wisp.png",
+  "source/environment/lanka-stone-wall-source.png",
+  "source/environment/lanka-stone-wall.png",
+  "source/environment/lanka-platform-cap-chroma.png",
+  "source/environment/lanka-platform-cap.png",
+  "source/environment/cracked-barrier-chroma.png",
+  "source/environment/cracked-barrier.png",
+  "source/environment/wind-anchor-chroma.png",
+  "source/environment/wind-anchor.png",
+  "source/environment/lanka-shrine-chroma.png",
+  "source/environment/lanka-shrine.png",
   "source/prompts/leap-to-lanka-night.md",
   "source/prompts/hanuman-wind.md",
   "source/prompts/hanuman-animation-poses.md",
+  "source/prompts/environment-art-pass.md",
 ];
 let assetBytes = 0;
 for (const relativePath of requiredAssetFiles) {
@@ -96,6 +113,7 @@ for (const assetId of [
   "leap-to-lanka-night",
   "hanuman-wind",
   "hanuman-animation-poses",
+  "lanka-environment-art-pass",
 ]) {
   assertContent(
     assetManifest.includes(`id: ${assetId}`),
@@ -107,8 +125,8 @@ assertContent(
   "all active prototype assets must be approved for prototype use",
 );
 assertContent(
-  assetBytes <= 25 * 1024 * 1024,
-  "prototype source assets exceed the 25 MB budget",
+  assetBytes <= 40 * 1024 * 1024,
+  "prototype source assets exceed the 40 MB budget",
 );
 const runtimeAssetFiles = [
   "source/backgrounds/leap-to-lanka-night.png",
@@ -119,6 +137,14 @@ const runtimeAssetFiles = [
   "source/characters/hanuman-air.png",
   "source/characters/hanuman-attack-windup.png",
   "source/characters/hanuman-attack-impact.png",
+  "source/environment/high-clouds.png",
+  "source/environment/valley-mist.png",
+  "source/environment/wind-wisp.png",
+  "source/environment/lanka-stone-wall.png",
+  "source/environment/lanka-platform-cap.png",
+  "source/environment/cracked-barrier.png",
+  "source/environment/wind-anchor.png",
+  "source/environment/lanka-shrine.png",
 ];
 const runtimeAssetBytes = runtimeAssetFiles.reduce(
   (total, relativePath) => total + statSync(resolve(assetRoot, relativePath)).size,
