@@ -1,3 +1,8 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "unity-mcp": {
+      "command": "/Users/m4pro_sv/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64",
+      "args": ["--mcp", "--name", "Games Studio"]
+    }
+  }
 }
