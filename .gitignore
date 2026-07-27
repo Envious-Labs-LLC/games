@@ -41,3 +41,8 @@ test-results/
 # Crash bundles / failure replays are kept; golden replays are committed.
 # (replays/failures/ is local debug output)
 **/replays/failures/
+
+# Games that are their own GitHub repo (founder rule 2026-07-26: every game
+# project gets its own repo). Ignored here so a stray `git add -A` in the studio
+# cannot record them as a broken submodule pointer instead of real files.
+/games/project-trishul/
