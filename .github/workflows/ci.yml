@@ -2,12 +2,24 @@ name: ci
 
 # Per-game CI. Discovers every game under games/ with a package.json and runs
 # the full check suite for each. No games => empty matrix => no-op (still green).
-# Activates once a GitHub remote exists and Actions is enabled (Walk stage).
+#
+# DORMANT DURING CRAWL (founder call 2026-07-26). Manual-only: automatic push and
+# pull_request triggers are off. The games under games/ are exploratory prototypes
+# and throwaway test artifacts, not production code, so a red build here signals
+# nothing worth acting on and just burns Actions minutes. This matches
+# `.claude/rules/workflow-process.md` RULE: stay-in-stage, which puts CI at Walk.
+#
+# To turn back on at Walk stage, restore:
+#   on:
+#     push:
+#       branches: [main]
+#     pull_request:
+# Before doing so, know that hanuman-wind-lab's Playwright suite fails 6/8 on
+# Linux (passes on macOS) and has never once run green in CI. See
+# `.claude/knowledge/walk/github-and-ci.md`.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

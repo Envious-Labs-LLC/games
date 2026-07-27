@@ -4,9 +4,13 @@ name: nightly-playtest
 # Surfaces balance regressions and crashes that a single PR run would miss.
 # Consider moving to the self-hosted Windows RTX runner once it exists (Run stage).
 
+# DORMANT DURING CRAWL (founder call 2026-07-26). The daily schedule is off;
+# manual-only. Nightly bot batches are Walk-stage machinery and there is no
+# stable game to regression-test yet. To re-enable, restore:
+#   schedule:
+#     - cron: "0 7 * * *"   # 07:00 UTC daily
+
 on:
-  schedule:
-    - cron: "0 7 * * *"   # 07:00 UTC daily
   workflow_dispatch:
 
 jobs:
