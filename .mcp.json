@@ -3,6 +3,10 @@
     "unity-mcp": {
       "command": "/Users/m4pro_sv/Developer/Games/.claude/scripts/unity-mcp-relay",
       "args": ["--name", "Games Studio"]
+    },
+    "blend-ai": {
+      "command": "/Users/m4pro_sv/.local/bin/uv",
+      "args": ["run", "--directory", "/Users/m4pro_sv/.local/share/mcp/blend-ai", "blend-ai"]
     }
   }
 }
