@@ -59,3 +59,5 @@ test-results/
 # this repo; safe to delete from disk at any time.
 /games/hanuman-wind-lab/
 /games/flame-of-lanka-prototype/
+# The Long Quiet, a choice-driven isekai roguelite. Own repo, own history.
+/games/the-long-quiet/
