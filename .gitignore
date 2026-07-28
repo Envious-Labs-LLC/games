@@ -47,10 +47,12 @@ test-results/
 # submodule pointer instead of real files.
 #   project-trishul -> github.com/saurabhav88/project-trishul
 #   moonwheat       -> github.com/Envious-Labs-LLC/moonwheat
+#   project-trishul-25d -> local only, no remote yet
 # hanuman-wind-lab and flame-of-lanka were early prototypes of the same game as
 # Trishul; on 2026-07-26 they moved into that repo under prototypes/, with their
 # full commit history. Their history also remains in this repo before that date.
 /games/project-trishul/
+/games/project-trishul-25d/
 /games/moonwheat/
 # Leftover local working copies of the two migrated prototypes. Their content now
 # lives in project-trishul under prototypes/. Ignored so they can never re-enter
